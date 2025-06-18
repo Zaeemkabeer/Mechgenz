@@ -17,10 +17,9 @@ const Header = () => {
     'HOME',
     'ABOUT US',
     'BUSINESS',
+    'TRADING',
+    'PHILOSOPHY',
     'POLICY',
-    'COMPANY ASSETS',
-    'PORTFOLIO',
-    'CAREER',
     'CONTACT US'
   ];
 

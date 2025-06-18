@@ -3,8 +3,8 @@ import { Facebook, Twitter, Instagram, Globe, Phone, Mail, MapPin } from 'lucide
 
 const Footer = () => {
   const quickLinks = [
-    'HOME', 'ABOUT US', 'BUSINESS', 'POLICY', 
-    'COMPANY ASSETS', 'PORTFOLIO', 'CAREER', 'CONTACT US'
+    'HOME', 'ABOUT US', 'BUSINESS', 'TRADING', 
+    'PHILOSOPHY', 'POLICY', 'CONTACT US'
   ];
 
   const socialLinks = [
