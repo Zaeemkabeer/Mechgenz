@@ -1,20 +1,18 @@
-# MECHGENZ Backend API
+# MECHGENZ Contact API Backend
 
-FastAPI backend with MongoDB Atlas integration for the MECHGENZ website contact form.
+A FastAPI backend service for handling contact form submissions with MongoDB Atlas integration.
 
 ## Features
 
-- ✅ FastAPI with async/await support
-- ✅ MongoDB Atlas integration with Motor (async MongoDB driver)
-- ✅ Automatic schema creation
-- ✅ Data validation with Pydantic
-- ✅ CORS support for frontend integration
-- ✅ Comprehensive error handling
-- ✅ Logging and monitoring
-- ✅ RESTful API endpoints
-- ✅ API documentation with Swagger UI
+- **Dynamic Form Handling**: Accept any form data structure without strict schemas
+- **MongoDB Integration**: Store submissions in MongoDB Atlas
+- **Email Validation**: Built-in email validation using Pydantic
+- **CORS Support**: Configured for cross-origin requests
+- **Admin Endpoints**: Retrieve and manage submissions
+- **Health Checks**: Monitor API and database connectivity
+- **Error Handling**: Comprehensive error handling and logging
 
-## Setup Instructions
+## Quick Start
 
 ### 1. Install Dependencies
 
@@ -23,181 +21,152 @@ cd backend
 pip install -r requirements.txt
 ```
 
-### 2. Environment Configuration
+### 2. Configure Environment
 
-Create a `.env` file in the backend directory:
+Copy the example environment file and update with your MongoDB connection string:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit the `.env` file with your MongoDB Atlas connection string:
+Edit `.env` and replace `your-mongodb-connection-string-here` with your actual MongoDB Atlas connection string.
 
-```env
-MONGODB_CONNECTION_STRING=mongodb+srv://username:password@cluster.mongodb.net/
-DATABASE_NAME=mechgenz_db
-COLLECTION_NAME=contact_submissions
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
-```
-
-### 3. MongoDB Atlas Setup
-
-1. Create a MongoDB Atlas account at https://www.mongodb.com/atlas
-2. Create a new cluster
-3. Create a database user with read/write permissions
-4. Get your connection string from the "Connect" button
-5. Replace `<username>`, `<password>`, and `<cluster-url>` in your connection string
-
-### 4. Run the Server
+### 3. Run the Server
 
 ```bash
-# Option 1: Using the run script
-python run.py
-
-# Option 2: Using uvicorn directly
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+python main.py
 ```
 
-The API will be available at:
-- **Server**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+Or using uvicorn directly:
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000`
 
 ## API Endpoints
 
-### Contact Form Endpoints
+### Health Check
+- `GET /` - Basic health check
+- `GET /health` - Detailed health check including database status
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/contact/submit` | Submit a new contact form |
-| GET | `/api/contact/submissions` | Get all submissions (with pagination) |
-| GET | `/api/contact/submissions/{id}` | Get specific submission |
-| PATCH | `/api/contact/submissions/{id}/status` | Update submission status |
-| DELETE | `/api/contact/submissions/{id}` | Delete submission |
-| GET | `/api/contact/stats` | Get submission statistics |
+### Contact Form Submission
+- `POST /api/contact` - Submit structured contact form
+- `POST /api/contact/dynamic` - Submit any form data dynamically
 
-### System Endpoints
+### Admin Endpoints
+- `GET /api/submissions` - Retrieve contact submissions (with pagination)
+- `PUT /api/submissions/{id}/status` - Update submission status
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | Root endpoint |
-| GET | `/health` | Health check |
+## API Documentation
 
-## Data Schema
+Once the server is running, visit:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-The contact form automatically creates the following schema in MongoDB:
+## Example Usage
 
-```json
-{
-  "_id": "ObjectId",
-  "name": "string (2-100 chars)",
-  "phone": "string (8-20 chars)",
-  "email": "valid email address",
-  "message": "string (10-1000 chars)",
-  "created_at": "datetime",
-  "status": "string (default: 'new')"
-}
-```
-
-## Frontend Integration
-
-Update your frontend contact form to submit to the backend:
+### Structured Contact Form
 
 ```javascript
-const handleSubmit = async (formData) => {
-  try {
-    const response = await fetch('http://localhost:8000/api/contact/submit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(formData)
-    });
-    
-    const result = await response.json();
-    
-    if (result.success) {
-      alert(result.message);
-    } else {
-      alert('Error submitting form');
-    }
-  } catch (error) {
-    console.error('Error:', error);
-    alert('Network error occurred');
-  }
-};
+const response = await fetch('http://localhost:8000/api/contact', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    name: 'John Doe',
+    email: 'john@example.com',
+    phone: '+974 1234 5678',
+    message: 'I would like to inquire about your services.',
+    company: 'ABC Company',
+    subject: 'Service Inquiry'
+  })
+});
+
+const result = await response.json();
+console.log(result);
 ```
 
-## Database Collections
+### Dynamic Form Submission
 
-The system automatically creates:
-
-- **Collection**: `contact_submissions`
-- **Indexes**: 
-  - `email` (for faster lookups)
-  - `created_at` (for sorting)
-
-## Error Handling
-
-The API includes comprehensive error handling:
-
-- **400**: Bad Request (validation errors)
-- **404**: Not Found
-- **500**: Internal Server Error
-- **503**: Service Unavailable (database issues)
-
-## Logging
-
-All operations are logged with timestamps and details for monitoring and debugging.
-
-## Security Features
-
-- Input validation and sanitization
-- Email format validation
-- Phone number validation
-- Message length limits
-- CORS protection
-- Error message sanitization
-
-## Development
-
-### Project Structure
-
-```
-backend/
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app and configuration
-│   ├── config.py            # Settings and environment variables
-│   ├── database.py          # MongoDB connection and setup
-│   ├── models.py            # Pydantic models and validation
-│   └── routes/
-│       ├── __init__.py
-│       └── contact.py       # Contact form endpoints
-├── .env.example             # Environment variables template
-├── requirements.txt         # Python dependencies
-├── run.py                  # Server startup script
-└── README.md               # This file
+```javascript
+const response = await fetch('http://localhost:8000/api/contact/dynamic', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    email: 'customer@example.com',
+    service_type: 'MEP Systems',
+    project_budget: '100000-500000',
+    timeline: 'Q2 2024',
+    custom_field: 'Any custom data',
+    form_type: 'service_inquiry'
+  })
+});
 ```
 
-### Adding New Features
+## Database Structure
 
-1. Create new Pydantic models in `models.py`
-2. Add new routes in the `routes/` directory
-3. Include new routers in `main.py`
-4. Update requirements.txt if needed
+The API stores all submissions in the `MECHGENZ` database under the `contact_submissions` collection. Each document includes:
+
+- Original form data (as submitted)
+- `created_at`: Timestamp of submission
+- `status`: Current status (new, contacted, resolved, etc.)
+- `source`: Source of the submission (website_contact_form, dynamic_form, etc.)
+- `_id`: MongoDB ObjectId
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MONGODB_URL` | MongoDB Atlas connection string | Required |
+| `API_HOST` | API host address | 0.0.0.0 |
+| `API_PORT` | API port number | 8000 |
+| `DEBUG` | Enable debug mode | True |
+| `ALLOWED_ORIGINS` | CORS allowed origins | localhost |
 
 ## Production Deployment
 
 For production deployment:
 
-1. Set `RELOAD=false` in environment variables
-2. Use a production WSGI server like Gunicorn
-3. Set up proper logging and monitoring
-4. Configure SSL/TLS certificates
-5. Set up database backups
-6. Configure firewall rules
+1. Set `DEBUG=False` in environment variables
+2. Configure specific allowed origins in CORS settings
+3. Use a production WSGI server like Gunicorn
+4. Set up proper logging and monitoring
+5. Secure your MongoDB connection string
+
+Example production command:
+```bash
+gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
+
+## Security Considerations
+
+- The API currently allows all origins (`*`) in CORS. Update this for production.
+- Implement rate limiting for production use
+- Add authentication for admin endpoints
+- Validate and sanitize all input data
+- Use HTTPS in production
+- Secure your MongoDB connection string
+
+## Error Handling
+
+The API includes comprehensive error handling:
+- 400: Bad Request (validation errors)
+- 404: Not Found
+- 500: Internal Server Error
+- Custom error messages for better debugging
+
+## Logging
+
+The application uses Python's built-in logging module. Logs include:
+- Successful submissions
+- Database connection status
+- Error details for debugging
 
 ## Support
 
-For issues or questions, contact the development team or check the API documentation at `/docs`.
+For issues or questions, please check the API documentation at `/docs` or contact the development team.

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Facebook, Twitter, Instagram, Globe, Phone, Mail, MapPin, Send, User, MessageSquare } from 'lucide-react';
+import { submitContactForm, type ContactFormData } from '../config/api';
 
 const Footer = () => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ContactFormData>({
     name: '',
     phone: '',
     email: '',
@@ -10,6 +11,10 @@ const Footer = () => {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<{
+    type: 'success' | 'error' | null;
+    message: string;
+  }>({ type: null, message: '' });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -17,26 +22,41 @@ const Footer = () => {
       ...prev,
       [name]: value
     }));
+    // Clear status when user starts typing
+    if (submitStatus.type) {
+      setSubmitStatus({ type: null, message: '' });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSubmitStatus({ type: null, message: '' });
     
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Reset form
-    setFormData({
-      name: '',
-      phone: '',
-      email: '',
-      message: ''
-    });
-    setIsSubmitting(false);
-    
-    // You can add actual form submission logic here
-    alert('Thank you for your inquiry! We will get back to you soon.');
+    try {
+      const result = await submitContactForm(formData);
+      
+      setSubmitStatus({
+        type: 'success',
+        message: result.message || 'Thank you for your inquiry! We will get back to you soon.'
+      });
+      
+      // Reset form on success
+      setFormData({
+        name: '',
+        phone: '',
+        email: '',
+        message: ''
+      });
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      setSubmitStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Network error occurred. Please try again.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const quickLinks = [
@@ -128,6 +148,17 @@ const Footer = () => {
             <div className="bg-white/10 backdrop-blur-sm p-8 rounded-2xl border border-white/20">
               <h3 className="text-2xl font-bold text-white mb-6">Send us a Message</h3>
               
+              {/* Status Messages */}
+              {submitStatus.type && (
+                <div className={`mb-6 p-4 rounded-lg ${
+                  submitStatus.type === 'success' 
+                    ? 'bg-green-500/20 border border-green-500/30 text-green-100' 
+                    : 'bg-red-500/20 border border-red-500/30 text-red-100'
+                }`}>
+                  <p className="text-sm">{submitStatus.message}</p>
+                </div>
+              )}
+              
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="group">
@@ -143,6 +174,8 @@ const Footer = () => {
                         value={formData.name}
                         onChange={handleInputChange}
                         required
+                        minLength={2}
+                        maxLength={100}
                         className="w-full pl-12 pr-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-orange-200 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300"
                         placeholder="Enter your full name"
                       />
@@ -162,6 +195,8 @@ const Footer = () => {
                         value={formData.phone}
                         onChange={handleInputChange}
                         required
+                        minLength={8}
+                        maxLength={20}
                         className="w-full pl-12 pr-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-orange-200 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300"
                         placeholder="+974 XXXX XXXX"
                       />
@@ -200,6 +235,8 @@ const Footer = () => {
                       value={formData.message}
                       onChange={handleInputChange}
                       required
+                      minLength={10}
+                      maxLength={1000}
                       rows={4}
                       className="w-full pl-12 pr-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-orange-200 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 resize-none"
                       placeholder="Tell us about your project requirements..."
@@ -210,7 +247,7 @@ const Footer = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full bg-white text-orange-600 py-3 px-6 rounded-lg font-semibold hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-white/50 transition-all duration-300 transform hover:scale-105 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                  className="w-full bg-white text-orange-600 py-3 px-6 rounded-lg font-semibold hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-white/50 transition-all duration-300 transform hover:scale-105 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
                 >
                   {isSubmitting ? (
                     <>
