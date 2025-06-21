@@ -41,15 +41,19 @@ COLLECTION_NAME = "contact_submissions"
 mongodb_client = None
 database = None
 collection = None
+is_db_connected = False
 
 def connect_to_mongodb():
     """Initialize MongoDB connection"""
-    global mongodb_client, database, collection
+    global mongodb_client, database, collection, is_db_connected
     
     try:
         if not MONGODB_CONNECTION_STRING:
-            raise ValueError("MongoDB connection string not found in environment variables")
+            logger.error("MongoDB connection string not found in environment variables")
+            logger.info("Please create a .env file in the backend directory with MONGODB_CONNECTION_STRING")
+            return False
         
+        logger.info("Attempting to connect to MongoDB...")
         mongodb_client = MongoClient(MONGODB_CONNECTION_STRING)
         
         # Test the connection
@@ -59,31 +63,40 @@ def connect_to_mongodb():
         # Get database and collection
         database = mongodb_client[DATABASE_NAME]
         collection = database[COLLECTION_NAME]
+        is_db_connected = True
         
+        logger.info(f"Database: {DATABASE_NAME}, Collection: {COLLECTION_NAME}")
         return True
         
     except ConnectionFailure as e:
         logger.error(f"Failed to connect to MongoDB: {e}")
+        is_db_connected = False
         return False
     except Exception as e:
         logger.error(f"Error connecting to MongoDB: {e}")
+        is_db_connected = False
         return False
 
 def close_mongodb_connection():
     """Close MongoDB connection"""
-    global mongodb_client
+    global mongodb_client, is_db_connected
     if mongodb_client:
         mongodb_client.close()
+        is_db_connected = False
         logger.info("MongoDB connection closed")
 
 # Initialize MongoDB connection on startup
 @app.on_event("startup")
 async def startup_event():
     """Initialize database connection on startup"""
+    logger.info("Starting up MECHGENZ Contact Form API...")
     success = connect_to_mongodb()
     if not success:
-        logger.error("Failed to initialize MongoDB connection")
-        raise Exception("Database connection failed")
+        logger.warning("Failed to initialize MongoDB connection - API will run but form submissions will fail")
+        logger.info("To fix this:")
+        logger.info("1. Create a .env file in the backend directory")
+        logger.info("2. Add your MongoDB connection string: MONGODB_CONNECTION_STRING=your_connection_string")
+        logger.info("3. Restart the server")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -97,7 +110,8 @@ async def root():
     return {
         "message": "MECHGENZ Contact Form API is running",
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "database_connected": is_db_connected
     }
 
 @app.get("/health")
@@ -105,7 +119,7 @@ async def health_check():
     """Detailed health check endpoint"""
     try:
         # Test MongoDB connection
-        if mongodb_client:
+        if mongodb_client and is_db_connected:
             mongodb_client.admin.command('ping')
             db_status = "connected"
         else:
@@ -114,7 +128,8 @@ async def health_check():
         return {
             "status": "healthy",
             "database": db_status,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "mongodb_configured": MONGODB_CONNECTION_STRING is not None
         }
     except Exception as e:
         return JSONResponse(
@@ -134,15 +149,19 @@ async def submit_contact_form(request: Request):
     Accepts any JSON payload and stores it dynamically in MongoDB
     """
     try:
+        logger.info("Received contact form submission")
+        
         # Check if database connection is available
-        if not collection:
+        if not is_db_connected or collection is None:
+            logger.error("Database connection not available")
             raise HTTPException(
                 status_code=503, 
-                detail="Database connection not available"
+                detail="Database connection not available. Please check MongoDB configuration."
             )
         
         # Get the JSON data from request
         form_data = await request.json()
+        logger.info(f"Form data received: {form_data}")
         
         # Validate that we have some data
         if not form_data:
@@ -159,6 +178,8 @@ async def submit_contact_form(request: Request):
             "user_agent": request.headers.get("user-agent"),
             "status": "new"
         }
+        
+        logger.info(f"Attempting to insert data into MongoDB: {submission_data}")
         
         # Insert the document into MongoDB
         result = collection.insert_one(submission_data)
@@ -180,13 +201,14 @@ async def submit_contact_form(request: Request):
         logger.error(f"MongoDB error: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Database error occurred while saving submission"
+            detail=f"Database error occurred while saving submission: {str(e)}"
         )
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error in contact form submission: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
         raise HTTPException(
             status_code=500,
-            detail="An unexpected error occurred"
+            detail=f"An unexpected error occurred: {str(e)}"
         )
 
 @app.get("/api/submissions")
@@ -203,7 +225,7 @@ async def get_submissions(
     - status: Filter by status (e.g., 'new', 'processed')
     """
     try:
-        if not collection:
+        if not is_db_connected or collection is None:
             raise HTTPException(
                 status_code=503,
                 detail="Database connection not available"
@@ -259,7 +281,7 @@ async def update_submission_status(submission_id: str, request: Request):
     Update the status of a specific submission
     """
     try:
-        if not collection:
+        if not is_db_connected or collection is None:
             raise HTTPException(
                 status_code=503,
                 detail="Database connection not available"
@@ -315,7 +337,7 @@ async def get_submission_stats():
     Get statistics about form submissions
     """
     try:
-        if not collection:
+        if not is_db_connected or collection is None:
             raise HTTPException(
                 status_code=503,
                 detail="Database connection not available"
@@ -370,6 +392,7 @@ async def not_found_handler(request: Request, exc):
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
+    logger.error(f"Internal server error: {exc}")
     return JSONResponse(
         status_code=500,
         content={

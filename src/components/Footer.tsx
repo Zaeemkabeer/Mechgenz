@@ -10,6 +10,8 @@ const Footer = () => {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -22,21 +24,42 @@ const Footer = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSubmitStatus('idle');
+    setErrorMessage('');
     
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Reset form
-    setFormData({
-      name: '',
-      phone: '',
-      email: '',
-      message: ''
-    });
-    setIsSubmitting(false);
-    
-    // You can add actual form submission logic here
-    alert('Thank you for your inquiry! We will get back to you soon.');
+    try {
+      const response = await fetch('http://localhost:8000/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        console.log('Form submitted successfully:', result);
+        setSubmitStatus('success');
+        // Reset form
+        setFormData({
+          name: '',
+          phone: '',
+          email: '',
+          message: ''
+        });
+      } else {
+        console.error('Form submission failed:', result);
+        setSubmitStatus('error');
+        setErrorMessage(result.detail || 'Failed to submit form. Please try again.');
+      }
+    } catch (error) {
+      console.error('Network error:', error);
+      setSubmitStatus('error');
+      setErrorMessage('Network error. Please check if the backend server is running and try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const quickLinks = [
@@ -127,6 +150,23 @@ const Footer = () => {
             {/* Contact Form */}
             <div className="bg-white/10 backdrop-blur-sm p-8 rounded-2xl border border-white/20">
               <h3 className="text-2xl font-bold text-white mb-6">Send us a Message</h3>
+              
+              {/* Status Messages */}
+              {submitStatus === 'success' && (
+                <div className="mb-6 p-4 bg-green-500/20 border border-green-500/30 rounded-lg">
+                  <p className="text-green-100 text-center">
+                    ✅ Thank you for your inquiry! We will get back to you soon.
+                  </p>
+                </div>
+              )}
+              
+              {submitStatus === 'error' && (
+                <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
+                  <p className="text-red-100 text-center">
+                    ❌ {errorMessage}
+                  </p>
+                </div>
+              )}
               
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid md:grid-cols-2 gap-6">
