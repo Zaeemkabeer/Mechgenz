@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import AboutSection from './components/AboutSection';
@@ -7,8 +8,9 @@ import TradingDivision from './components/TradingDivision';
 import CorporatePhilosophy from './components/CorporatePhilosophy';
 import CodeOfEthics from './components/CodeOfEthics';
 import Footer from './components/Footer';
+import AdminApp from './admin/AdminApp';
 
-function App() {
+function MainWebsite() {
   return (
     <div className="min-h-screen">
       <Header />
@@ -20,6 +22,17 @@ function App() {
       <CodeOfEthics />
       <Footer />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/admin/*" element={<AdminApp />} />
+        <Route path="/*" element={<MainWebsite />} />
+      </Routes>
+    </Router>
   );
 }
 
