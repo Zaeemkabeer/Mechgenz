@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Phone, Calendar, Reply, Eye, Search, Filter, Send, X } from 'lucide-react';
+import { Mail, Phone, Calendar, Reply, Eye, Search, Filter, Send, X, CheckCircle, Clock } from 'lucide-react';
 
 interface Inquiry {
   _id: string;
@@ -20,6 +20,7 @@ const UserInquiries = () => {
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [replyMessage, setReplyMessage] = useState('');
   const [isReplying, setIsReplying] = useState(false);
+  const [replySuccess, setReplySuccess] = useState(false);
 
   useEffect(() => {
     fetchInquiries();
@@ -71,18 +72,24 @@ const UserInquiries = () => {
         // Refresh inquiries
         await fetchInquiries();
         
-        // Close modal and reset
-        setShowReplyModal(false);
-        setReplyMessage('');
+        // Show success state
+        setReplySuccess(true);
         
         // Update selected inquiry status
         if (selectedInquiry) {
           setSelectedInquiry({ ...selectedInquiry, status: 'replied' });
         }
 
-        alert('Reply sent successfully!');
+        // Auto close modal after success
+        setTimeout(() => {
+          setShowReplyModal(false);
+          setReplyMessage('');
+          setReplySuccess(false);
+        }, 2000);
+
       } else {
-        alert('Failed to send reply. Please try again.');
+        const errorData = await emailResponse.json();
+        alert(`Failed to send reply: ${errorData.detail || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error sending reply:', error);
@@ -113,7 +120,7 @@ const UserInquiries = () => {
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">User Inquiries</h1>
-        <p className="text-gray-600 mt-2">Manage customer inquiries and send replies</p>
+        <p className="text-gray-600 mt-2">Manage customer inquiries and send professional replies</p>
       </div>
 
       {/* Filters */}
@@ -174,12 +181,17 @@ const UserInquiries = () => {
                         <p className="text-sm font-medium text-gray-900 truncate">
                           {inquiry.name}
                         </p>
-                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${
                           inquiry.status === 'new' 
                             ? 'bg-orange-100 text-orange-800' 
                             : 'bg-green-100 text-green-800'
                         }`}>
-                          {inquiry.status}
+                          {inquiry.status === 'new' ? (
+                            <Clock className="h-3 w-3" />
+                          ) : (
+                            <CheckCircle className="h-3 w-3" />
+                          )}
+                          <span>{inquiry.status}</span>
                         </div>
                       </div>
                       <p className="text-sm text-gray-500 truncate">{inquiry.email}</p>
@@ -208,10 +220,15 @@ const UserInquiries = () => {
                   <h2 className="text-xl font-bold text-gray-900">Inquiry Details</h2>
                   <button
                     onClick={() => setShowReplyModal(true)}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
+                    disabled={selectedInquiry.status === 'replied'}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2 ${
+                      selectedInquiry.status === 'replied'
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-orange-500 hover:bg-orange-600 text-white'
+                    }`}
                   >
                     <Reply className="h-4 w-4" />
-                    <span>Reply</span>
+                    <span>{selectedInquiry.status === 'replied' ? 'Already Replied' : 'Send Reply'}</span>
                   </button>
                 </div>
               </div>
@@ -281,12 +298,17 @@ const UserInquiries = () => {
                 {/* Status */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">Status</h3>
-                  <div className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
+                  <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${
                     selectedInquiry.status === 'new' 
                       ? 'bg-orange-100 text-orange-800' 
                       : 'bg-green-100 text-green-800'
                   }`}>
-                    {selectedInquiry.status === 'new' ? 'New Inquiry' : 'Replied'}
+                    {selectedInquiry.status === 'new' ? (
+                      <Clock className="h-4 w-4" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                    <span>{selectedInquiry.status === 'new' ? 'New Inquiry' : 'Replied'}</span>
                   </div>
                 </div>
               </div>
@@ -302,77 +324,114 @@ const UserInquiries = () => {
         </div>
       </div>
 
-      {/* Reply Modal */}
+      {/* Enhanced Reply Modal */}
       {showReplyModal && selectedInquiry && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-t-xl">
               <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-gray-900">Reply to {selectedInquiry.name}</h3>
+                <div>
+                  <h3 className="text-xl font-bold">Professional Reply</h3>
+                  <p className="text-orange-100 text-sm">Sending to: {selectedInquiry.name} ({selectedInquiry.email})</p>
+                </div>
                 <button
-                  onClick={() => setShowReplyModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  onClick={() => {
+                    setShowReplyModal(false);
+                    setReplySuccess(false);
+                  }}
+                  className="text-white hover:text-orange-200 transition-colors duration-200"
                 >
                   <X className="h-6 w-6" />
                 </button>
               </div>
             </div>
             
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  To: {selectedInquiry.email}
-                </label>
+            {replySuccess ? (
+              <div className="p-8 text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                </div>
+                <h4 className="text-xl font-bold text-gray-900 mb-2">Email Sent Successfully!</h4>
+                <p className="text-gray-600">Your professional reply has been sent to {selectedInquiry.name}.</p>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Original Message:
-                </label>
-                <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
-                  {selectedInquiry.message}
+            ) : (
+              <div className="p-6 space-y-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-900 mb-2">Email Preview</h4>
+                  <p className="text-blue-800 text-sm">
+                    This will be sent as a professional HTML email with MECHGENZ branding, contact information, and the original message for context.
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Original Message from {selectedInquiry.name}:
+                  </label>
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <p className="text-sm text-gray-600 whitespace-pre-line">
+                      {selectedInquiry.message}
+                    </p>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Your Professional Reply: *
+                  </label>
+                  <textarea
+                    value={replyMessage}
+                    onChange={(e) => setReplyMessage(e.target.value)}
+                    rows={8}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+                    placeholder="Type your professional reply here...
+
+Example:
+Thank you for your inquiry about our construction services. We would be delighted to discuss your project requirements in detail.
+
+Based on your message, I understand you are looking for [specific service]. Our team has extensive experience in this area and we would be happy to provide you with a comprehensive proposal.
+
+I will have our project manager contact you within 24 hours to schedule a consultation at your convenience.
+
+Best regards,
+MECHGENZ Team"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    This message will be formatted in a professional email template with company branding and contact information.
+                  </p>
                 </div>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Your Reply:
-                </label>
-                <textarea
-                  value={replyMessage}
-                  onChange={(e) => setReplyMessage(e.target.value)}
-                  rows={6}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  placeholder="Type your reply here..."
-                />
-              </div>
-            </div>
+            )}
             
-            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowReplyModal(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors duration-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleReply}
-                disabled={isReplying || !replyMessage.trim()}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isReplying ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Sending...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4" />
-                    <span>Send Reply</span>
-                  </>
-                )}
-              </button>
-            </div>
+            {!replySuccess && (
+              <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowReplyModal(false);
+                    setReplyMessage('');
+                  }}
+                  className="px-6 py-2 text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg font-medium transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReply}
+                  disabled={isReplying || !replyMessage.trim()}
+                  className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isReplying ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Sending Professional Email...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      <span>Send Professional Reply</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
