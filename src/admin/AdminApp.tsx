@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AdminLogin from './components/AdminLogin';
 import AdminDashboard from './components/AdminDashboard';
 import AdminLayout from './components/AdminLayout';
@@ -13,6 +13,7 @@ import Settings from './components/Settings';
 const AdminApp = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const location = useLocation();
 
   useEffect(() => {
     // Check if admin is already logged in
@@ -48,20 +49,20 @@ const AdminApp = () => {
   }
 
   return (
-    <Router>
-      <AdminLayout onLogout={handleLogout}>
-        <Routes>
-          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-          <Route path="/admin/dashboard" element={<AdminDashboard />} />
-          <Route path="/admin/user-inquiries" element={<UserInquiries />} />
-          <Route path="/admin/job-management" element={<JobManagement />} />
-          <Route path="/admin/gallery-management" element={<GalleryManagement />} />
-          <Route path="/admin/latest-works" element={<LatestWorks />} />
-          <Route path="/admin/faq-management" element={<FAQManagement />} />
-          <Route path="/admin/settings" element={<Settings />} />
-        </Routes>
-      </AdminLayout>
-    </Router>
+    <AdminLayout onLogout={handleLogout}>
+      <Routes>
+        <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="/dashboard" element={<AdminDashboard />} />
+        <Route path="/user-inquiries" element={<UserInquiries />} />
+        <Route path="/job-management" element={<JobManagement />} />
+        <Route path="/gallery-management" element={<GalleryManagement />} />
+        <Route path="/latest-works" element={<LatestWorks />} />
+        <Route path="/faq-management" element={<FAQManagement />} />
+        <Route path="/settings" element={<Settings />} />
+        {/* Catch all route for admin section */}
+        <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+      </Routes>
+    </AdminLayout>
   );
 };
 

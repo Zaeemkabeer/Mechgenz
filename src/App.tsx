@@ -29,7 +29,9 @@ function App() {
   return (
     <Router>
       <Routes>
+        {/* Admin routes - handle all /admin/* paths */}
         <Route path="/admin/*" element={<AdminApp />} />
+        {/* Main website routes */}
         <Route path="/*" element={<MainWebsite />} />
       </Routes>
     </Router>
