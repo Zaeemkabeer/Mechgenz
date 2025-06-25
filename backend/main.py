@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, PyMongoError
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 from dotenv import load_dotenv
 import logging
@@ -14,6 +14,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from bson import ObjectId
 import base64
+import uuid
+import shutil
 
 # Load environment variables
 load_dotenv()
@@ -53,6 +55,14 @@ EMAIL_PORT = 587
 EMAIL_USER = "mechgenz4@gmail.com"
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
+# File upload configuration
+UPLOAD_DIR = "uploads"
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_EXTENSIONS = {'.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.txt'}
+
+# Create upload directory if it doesn't exist
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 # Initialize Resend
 resend.api_key = RESEND_API_KEY
 
@@ -90,6 +100,33 @@ def close_mongodb_connection():
         is_db_connected = False
         logger.info("MongoDB connection closed")
 
+def save_uploaded_file(file: UploadFile) -> Optional[Dict[str, str]]:
+    """Save uploaded file and return file info"""
+    try:
+        # Check file extension
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            return None
+        
+        # Generate unique filename
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        return {
+            "original_name": file.filename,
+            "saved_name": unique_filename,
+            "file_path": file_path,
+            "file_size": os.path.getsize(file_path),
+            "content_type": file.content_type
+        }
+    except Exception as e:
+        logger.error(f"Error saving file: {e}")
+        return None
+
 def get_logo_base64():
     """Get the MECHGENZ logo as base64 string for email embedding"""
     try:
@@ -110,8 +147,8 @@ def get_logo_base64():
         logger.warning(f"Could not load logo: {e}")
     return None
 
-def create_professional_email_template(to_name: str, reply_message: str, original_message: str) -> str:
-    """Create a professional HTML email template with embedded logo"""
+def create_email_template(to_name: str, reply_message: str, original_message: str) -> str:
+    """Create a clean HTML email template with embedded logo"""
     
     logo_base64 = get_logo_base64()
     
@@ -464,8 +501,8 @@ def send_email_reply(to_email: str, to_name: str, reply_message: str, original_m
         msg['To'] = to_email
         msg['Subject'] = "Reply from MECHGENZ - Your Inquiry Response"
         
-        # Create professional HTML email
-        html_body = create_professional_email_template(to_name, reply_message, original_message)
+        # Create HTML email
+        html_body = create_email_template(to_name, reply_message, original_message)
         
         # Create plain text version as fallback
         text_body = f"""
@@ -507,7 +544,7 @@ MECHGENZ Team
         server.sendmail(EMAIL_USER, to_email, msg.as_string())
         server.quit()
         
-        logger.info(f"Professional email with logo sent successfully to {to_email}")
+        logger.info(f"Email sent successfully to {to_email}")
         return True
         
     except Exception as e:
@@ -557,25 +594,54 @@ async def health_check():
         })
 
 @app.post("/api/contact")
-async def submit_contact_form(request: Request):
+async def submit_contact_form(
+    request: Request,
+    name: str = Form(...),
+    phone: str = Form(...),
+    email: str = Form(...),
+    message: str = Form(...),
+    files: List[UploadFile] = File(default=[])
+):
     try:
         if not is_db_connected or collection is None:
             raise HTTPException(status_code=503, detail="Database connection not available.")
-        form_data = await request.json()
-        if not form_data:
-            raise HTTPException(status_code=400, detail="No data provided")
+        
+        # Process uploaded files
+        uploaded_files = []
+        for file in files:
+            if file.filename:  # Check if file was actually uploaded
+                # Check file size
+                file.file.seek(0, 2)  # Seek to end
+                file_size = file.file.tell()
+                file.file.seek(0)  # Reset to beginning
+                
+                if file_size > MAX_FILE_SIZE:
+                    raise HTTPException(status_code=400, detail=f"File {file.filename} is too large. Maximum size is 10MB.")
+                
+                file_info = save_uploaded_file(file)
+                if file_info:
+                    uploaded_files.append(file_info)
+                else:
+                    raise HTTPException(status_code=400, detail=f"Invalid file type for {file.filename}")
+        
         submission_data = {
-            **form_data,
+            "name": name,
+            "phone": phone,
+            "email": email,
+            "message": message,
+            "uploaded_files": uploaded_files,
             "submitted_at": datetime.utcnow(),
             "ip_address": request.client.host if request.client else None,
             "user_agent": request.headers.get("user-agent"),
             "status": "new"
         }
+        
         result = collection.insert_one(submission_data)
         return {
             "success": True,
             "message": "Contact form submitted successfully",
             "submission_id": str(result.inserted_id),
+            "files_uploaded": len(uploaded_files),
             "timestamp": datetime.utcnow().isoformat()
         }
     except HTTPException:
@@ -600,7 +666,7 @@ async def send_reply_email(request: Request):
             reply_message=data['reply_message'],
             original_message=data['original_message']
         ):
-            return {"success": True, "message": "Professional email with logo sent successfully"}
+            return {"success": True, "message": "Email sent successfully"}
         else:
             raise HTTPException(status_code=500, detail="Failed to send email")
     except HTTPException:
@@ -632,6 +698,43 @@ async def get_submissions(limit: Optional[int] = 50, skip: Optional[int] = 0, st
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving submissions: {str(e)}")
+
+@app.get("/api/submissions/{submission_id}/file/{file_name}")
+async def download_file(submission_id: str, file_name: str):
+    try:
+        if not is_db_connected or collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        # Find the submission
+        submission = collection.find_one({"_id": ObjectId(submission_id)})
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+        
+        # Find the file
+        uploaded_files = submission.get("uploaded_files", [])
+        file_info = None
+        for file in uploaded_files:
+            if file["saved_name"] == file_name:
+                file_info = file
+                break
+        
+        if not file_info:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        file_path = file_info["file_path"]
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=file_path,
+            filename=file_info["original_name"],
+            media_type=file_info["content_type"]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
 @app.put("/api/submissions/{submission_id}/status")
 async def update_submission_status(submission_id: str, request: Request):

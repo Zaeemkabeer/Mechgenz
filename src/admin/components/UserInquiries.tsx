@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Phone, Calendar, Reply, Eye, Search, Filter, Send, X, CheckCircle, Clock } from 'lucide-react';
+import { Mail, Phone, Calendar, Reply, Eye, Search, Filter, Send, X, CheckCircle, Clock, Download, FileText, Image as ImageIcon, Paperclip } from 'lucide-react';
+
+interface UploadedFile {
+  original_name: string;
+  saved_name: string;
+  file_size: number;
+  content_type: string;
+}
 
 interface Inquiry {
   _id: string;
@@ -9,6 +16,7 @@ interface Inquiry {
   message: string;
   submitted_at: string;
   status: string;
+  uploaded_files?: UploadedFile[];
 }
 
 const UserInquiries = () => {
@@ -99,6 +107,45 @@ const UserInquiries = () => {
     }
   };
 
+  const handleDownloadFile = async (fileName: string, originalName: string) => {
+    if (!selectedInquiry) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/submissions/${selectedInquiry._id}/file/${fileName}`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = originalName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert('Failed to download file');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Error downloading file');
+    }
+  };
+
+  const getFileIcon = (contentType: string) => {
+    if (contentType.includes('image')) {
+      return <ImageIcon className="h-5 w-5" />;
+    }
+    return <FileText className="h-5 w-5" />;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   const filteredInquiries = inquiries.filter(inquiry => {
     const matchesSearch = inquiry.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          inquiry.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -120,7 +167,7 @@ const UserInquiries = () => {
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">User Inquiries</h1>
-        <p className="text-gray-600 mt-2">Manage customer inquiries and send professional replies</p>
+        <p className="text-gray-600 mt-2">Manage customer inquiries and send replies</p>
       </div>
 
       {/* Filters */}
@@ -181,17 +228,22 @@ const UserInquiries = () => {
                         <p className="text-sm font-medium text-gray-900 truncate">
                           {inquiry.name}
                         </p>
-                        <div className={`px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${
-                          inquiry.status === 'new' 
-                            ? 'bg-orange-100 text-orange-800' 
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {inquiry.status === 'new' ? (
-                            <Clock className="h-3 w-3" />
-                          ) : (
-                            <CheckCircle className="h-3 w-3" />
+                        <div className="flex items-center space-x-1">
+                          {inquiry.uploaded_files && inquiry.uploaded_files.length > 0 && (
+                            <Paperclip className="h-3 w-3 text-gray-400" />
                           )}
-                          <span>{inquiry.status}</span>
+                          <div className={`px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${
+                            inquiry.status === 'new' 
+                              ? 'bg-orange-100 text-orange-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {inquiry.status === 'new' ? (
+                              <Clock className="h-3 w-3" />
+                            ) : (
+                              <CheckCircle className="h-3 w-3" />
+                            )}
+                            <span>{inquiry.status}</span>
+                          </div>
                         </div>
                       </div>
                       <p className="text-sm text-gray-500 truncate">{inquiry.email}</p>
@@ -295,6 +347,34 @@ const UserInquiries = () => {
                   </div>
                 </div>
 
+                {/* Uploaded Files */}
+                {selectedInquiry.uploaded_files && selectedInquiry.uploaded_files.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Attached Files</h3>
+                    <div className="space-y-2">
+                      {selectedInquiry.uploaded_files.map((file, index) => (
+                        <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            <div className="text-gray-500">
+                              {getFileIcon(file.content_type)}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{file.original_name}</p>
+                              <p className="text-xs text-gray-500">{formatFileSize(file.file_size)}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleDownloadFile(file.saved_name, file.original_name)}
+                            className="text-orange-600 hover:text-orange-700 transition-colors duration-200"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Status */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">Status</h3>
@@ -324,14 +404,14 @@ const UserInquiries = () => {
         </div>
       </div>
 
-      {/* Enhanced Reply Modal */}
+      {/* Reply Modal */}
       {showReplyModal && selectedInquiry && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-t-xl">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-bold">Professional Reply</h3>
+                  <h3 className="text-xl font-bold">Send Reply</h3>
                   <p className="text-orange-100 text-sm">Sending to: {selectedInquiry.name} ({selectedInquiry.email})</p>
                 </div>
                 <button
@@ -352,17 +432,10 @@ const UserInquiries = () => {
                   <CheckCircle className="h-8 w-8 text-green-600" />
                 </div>
                 <h4 className="text-xl font-bold text-gray-900 mb-2">Email Sent Successfully!</h4>
-                <p className="text-gray-600">Your professional reply has been sent to {selectedInquiry.name}.</p>
+                <p className="text-gray-600">Your reply has been sent to {selectedInquiry.name}.</p>
               </div>
             ) : (
               <div className="p-6 space-y-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-900 mb-2">Email Preview</h4>
-                  <p className="text-blue-800 text-sm">
-                    This will be sent as a professional HTML email with MECHGENZ branding, contact information, and the original message for context.
-                  </p>
-                </div>
-                
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Original Message from {selectedInquiry.name}:
@@ -376,28 +449,15 @@ const UserInquiries = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Your Professional Reply: *
+                    Your Reply: *
                   </label>
                   <textarea
                     value={replyMessage}
                     onChange={(e) => setReplyMessage(e.target.value)}
                     rows={8}
                     className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
-                    placeholder="Type your professional reply here...
-
-Example:
-Thank you for your inquiry about our construction services. We would be delighted to discuss your project requirements in detail.
-
-Based on your message, I understand you are looking for [specific service]. Our team has extensive experience in this area and we would be happy to provide you with a comprehensive proposal.
-
-I will have our project manager contact you within 24 hours to schedule a consultation at your convenience.
-
-Best regards,
-MECHGENZ Team"
+                    placeholder="Type your reply here..."
                   />
-                  <p className="text-xs text-gray-500 mt-2">
-                    This message will be formatted in a professional email template with company branding and contact information.
-                  </p>
                 </div>
               </div>
             )}
@@ -421,12 +481,12 @@ MECHGENZ Team"
                   {isReplying ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>Sending Professional Email...</span>
+                      <span>Sending...</span>
                     </>
                   ) : (
                     <>
                       <Send className="h-4 w-4" />
-                      <span>Send Professional Reply</span>
+                      <span>Send Reply</span>
                     </>
                   )}
                 </button>
