@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Facebook, Twitter, Instagram, Globe, Phone, Mail, MapPin, Send, User, MessageSquare, Upload, X, FileText, Image as ImageIcon } from 'lucide-react';
+import { Facebook, Twitter, Instagram, Globe, Phone, Mail, MapPin, Send, User, MessageSquare, Upload, X, FileText, Image as ImageIcon, Paperclip } from 'lucide-react';
 
 const Footer = () => {
   const [formData, setFormData] = useState({
@@ -26,12 +26,23 @@ const Footer = () => {
     const files = Array.from(e.target.files || []);
     const validFiles = files.filter(file => {
       const isValidType = file.type.includes('pdf') || file.type.includes('image') || 
-                         file.type.includes('document') || file.type.includes('text');
+                         file.type.includes('document') || file.type.includes('text') ||
+                         file.name.toLowerCase().endsWith('.pdf') ||
+                         file.name.toLowerCase().endsWith('.doc') ||
+                         file.name.toLowerCase().endsWith('.docx') ||
+                         file.name.toLowerCase().endsWith('.txt');
       const isValidSize = file.size <= 10 * 1024 * 1024; // 10MB limit
       return isValidType && isValidSize;
     });
     
+    if (validFiles.length !== files.length) {
+      alert('Some files were rejected. Please ensure files are under 10MB and in supported formats.');
+    }
+    
     setUploadedFiles(prev => [...prev, ...validFiles]);
+    
+    // Reset the input value so the same file can be selected again if needed
+    e.target.value = '';
   };
 
   const removeFile = (index: number) => {
@@ -63,16 +74,15 @@ const Footer = () => {
       const formDataToSend = new FormData();
       
       // Add form fields
-      Object.entries(formData).forEach(([key, value]) => {
-        formDataToSend.append(key, value);
-      });
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('phone', formData.phone);
+      formDataToSend.append('email', formData.email);
+      formDataToSend.append('message', formData.message);
       
-      // Add files
-      uploadedFiles.forEach((file, index) => {
-        formDataToSend.append(`file_${index}`, file);
+      // Add files with the correct field name expected by the backend
+      uploadedFiles.forEach((file) => {
+        formDataToSend.append('files', file);
       });
-      
-      formDataToSend.append('file_count', uploadedFiles.length.toString());
 
       const response = await fetch('http://localhost:8000/api/contact', {
         method: 'POST',
@@ -292,64 +302,70 @@ const Footer = () => {
                 </div>
 
                 {/* File Upload Section */}
-                <div className="group">
-                  <label className="block text-sm font-medium text-orange-100 mb-2">
-                    Attach Documents (Optional)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      id="file-upload"
-                      multiple
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    <label
-                      htmlFor="file-upload"
-                      className="w-full flex items-center justify-center px-4 py-3 bg-white/20 border border-white/30 border-dashed rounded-lg text-orange-200 hover:bg-white/30 cursor-pointer transition-all duration-300"
-                    >
-                      <Upload className="h-5 w-5 mr-2" />
-                      <span>Click to upload files (PDF, Images, Documents)</span>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-orange-100 mb-3">
+                      Attach Documents (Optional)
                     </label>
-                  </div>
-                  <p className="text-xs text-orange-200 mt-2">
-                    Maximum file size: 10MB per file. Supported formats: PDF, DOC, DOCX, JPG, PNG, GIF, TXT
-                  </p>
-                </div>
-
-                {/* Uploaded Files Display */}
-                {uploadedFiles.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-orange-100">Uploaded Files:</h4>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {uploadedFiles.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-white/10 p-3 rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <div className="text-orange-300">
-                              {getFileIcon(file)}
-                            </div>
-                            <div>
-                              <p className="text-white text-sm font-medium truncate max-w-48">
-                                {file.name}
-                              </p>
-                              <p className="text-orange-200 text-xs">
-                                {formatFileSize(file.size)}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeFile(index)}
-                            className="text-red-300 hover:text-red-100 transition-colors duration-200"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
+                    <div className="relative">
+                      <input
+                        type="file"
+                        id="file-upload"
+                        multiple
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className="w-full flex flex-col items-center justify-center px-6 py-8 bg-white/20 border-2 border-white/30 border-dashed rounded-lg text-orange-200 hover:bg-white/30 cursor-pointer transition-all duration-300 group"
+                      >
+                        <Upload className="h-8 w-8 mb-3 group-hover:scale-110 transition-transform duration-300" />
+                        <span className="text-base font-medium mb-1">Click to upload files</span>
+                        <span className="text-sm opacity-80">PDF, Images, Documents</span>
+                      </label>
                     </div>
+                    <p className="text-xs text-orange-200 mt-2 opacity-80">
+                      Maximum file size: 10MB per file. Supported formats: PDF, DOC, DOCX, JPG, PNG, GIF, TXT
+                    </p>
                   </div>
-                )}
+
+                  {/* Uploaded Files Display */}
+                  {uploadedFiles.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-orange-100 flex items-center">
+                        <Paperclip className="h-4 w-4 mr-2" />
+                        Uploaded Files ({uploadedFiles.length}):
+                      </h4>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {uploadedFiles.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between bg-white/10 p-3 rounded-lg border border-white/20 hover:bg-white/20 transition-colors duration-200">
+                            <div className="flex items-center space-x-3 flex-1 min-w-0">
+                              <div className="text-orange-300 flex-shrink-0">
+                                {getFileIcon(file)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-white text-sm font-medium truncate">
+                                  {file.name}
+                                </p>
+                                <p className="text-orange-200 text-xs">
+                                  {formatFileSize(file.size)}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFile(index)}
+                              className="text-red-300 hover:text-red-100 transition-colors duration-200 p-1 rounded-full hover:bg-red-500/20 flex-shrink-0 ml-2"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   type="submit"
