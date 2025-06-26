@@ -17,17 +17,36 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
     setIsLoading(true);
     setError('');
 
-    // Simulate login delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch('http://localhost:8000/api/admin/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email,
+          password: password
+        })
+      });
 
-    if (email === 'mechgenz4@gmail.com' && password === 'mechgenz4') {
-      onLogin(true);
-    } else {
-      setError('Invalid email or password');
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Store admin info in localStorage
+        localStorage.setItem('adminToken', 'mechgenz-admin-authenticated');
+        localStorage.setItem('adminInfo', JSON.stringify(result.admin));
+        onLogin(true);
+      } else {
+        setError(result.detail || 'Invalid email or password');
+        onLogin(false);
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Network error. Please check if the backend server is running and try again.');
       onLogin(false);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   return (
@@ -122,7 +141,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
 
           <div className="mt-6 text-center">
             <p className="text-gray-400 text-sm">
-              Demo Credentials: mechgenz4@gmail.com / mechgenz4
+              
             </p>
           </div>
         </div>
