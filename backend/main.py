@@ -16,6 +16,7 @@ from bson import ObjectId
 import base64
 import uuid
 import shutil
+import hashlib
 
 # Load environment variables
 load_dotenv()
@@ -44,6 +45,7 @@ app.add_middleware(
 MONGODB_CONNECTION_STRING = os.getenv("MONGODB_CONNECTION_STRING")
 DATABASE_NAME = "MECHGENZ"
 COLLECTION_NAME = "contact_submissions"
+ADMIN_COLLECTION_NAME = "admin_users"
 
 # Resend configuration
 RESEND_API_KEY = "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW"
@@ -70,10 +72,19 @@ resend.api_key = RESEND_API_KEY
 mongodb_client = None
 database = None
 collection = None
+admin_collection = None
 is_db_connected = False
 
+def hash_password(password: str) -> str:
+    """Hash password using SHA-256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against hash"""
+    return hash_password(password) == hashed
+
 def connect_to_mongodb():
-    global mongodb_client, database, collection, is_db_connected
+    global mongodb_client, database, collection, admin_collection, is_db_connected
     try:
         if not MONGODB_CONNECTION_STRING:
             logger.error("MongoDB connection string not found in environment variables")
@@ -83,8 +94,13 @@ def connect_to_mongodb():
         mongodb_client.admin.command('ping')
         database = mongodb_client[DATABASE_NAME]
         collection = database[COLLECTION_NAME]
+        admin_collection = database[ADMIN_COLLECTION_NAME]
         is_db_connected = True
         logger.info("Successfully connected to MongoDB Atlas")
+        
+        # Initialize default admin user if not exists
+        initialize_default_admin()
+        
         return True
     except ConnectionFailure as e:
         logger.error(f"Failed to connect to MongoDB: {e}")
@@ -92,6 +108,32 @@ def connect_to_mongodb():
     except Exception as e:
         logger.error(f"Error connecting to MongoDB: {e}")
         return False
+
+def initialize_default_admin():
+    """Initialize default admin user if not exists"""
+    try:
+        if admin_collection is None:
+            return
+        
+        # Check if admin user exists
+        existing_admin = admin_collection.find_one({"email": "mechgenz4@gmail.com"})
+        
+        if not existing_admin:
+            # Create default admin user
+            default_admin = {
+                "name": "MECHGENZ Admin",
+                "email": "mechgenz4@gmail.com",
+                "password": hash_password("mechgenz4"),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "is_default": True
+            }
+            result = admin_collection.insert_one(default_admin)
+            logger.info(f"Default admin user created with ID: {result.inserted_id}")
+        else:
+            logger.info("Admin user already exists")
+    except Exception as e:
+        logger.error(f"Error initializing default admin: {e}")
 
 def close_mongodb_connection():
     global mongodb_client, is_db_connected
@@ -776,6 +818,129 @@ async def get_submission_stats():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving stats: {str(e)}")
+
+# Admin authentication endpoints
+@app.post("/api/admin/login")
+async def admin_login(request: Request):
+    try:
+        if not is_db_connected or admin_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        data = await request.json()
+        email = data.get("email")
+        password = data.get("password")
+        
+        if not email or not password:
+            raise HTTPException(status_code=400, detail="Email and password are required")
+        
+        # Find admin user
+        admin_user = admin_collection.find_one({"email": email})
+        if not admin_user or not verify_password(password, admin_user["password"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        return {
+            "success": True,
+            "message": "Login successful",
+            "admin": {
+                "id": str(admin_user["_id"]),
+                "name": admin_user["name"],
+                "email": admin_user["email"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
+
+@app.get("/api/admin/profile")
+async def get_admin_profile():
+    try:
+        if not is_db_connected or admin_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        # Get the default admin user (or first admin user)
+        admin_user = admin_collection.find_one({})
+        if not admin_user:
+            raise HTTPException(status_code=404, detail="Admin user not found")
+        
+        return {
+            "success": True,
+            "admin": {
+                "id": str(admin_user["_id"]),
+                "name": admin_user["name"],
+                "email": admin_user["email"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving admin profile: {str(e)}")
+
+@app.put("/api/admin/profile")
+async def update_admin_profile(request: Request):
+    try:
+        if not is_db_connected or admin_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        data = await request.json()
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
+        current_password = data.get("currentPassword")
+        
+        if not name or not email:
+            raise HTTPException(status_code=400, detail="Name and email are required")
+        
+        # Get current admin user (first admin user in the collection)
+        admin_user = admin_collection.find_one({})
+        if not admin_user:
+            raise HTTPException(status_code=404, detail="Admin user not found")
+        
+        admin_id = admin_user["_id"]
+        
+        # Prepare update data
+        update_data = {
+            "name": name,
+            "email": email,
+            "updated_at": datetime.utcnow()
+        }
+        
+        # If password is being changed, verify current password and hash new one
+        if password:
+            if not current_password:
+                raise HTTPException(status_code=400, detail="Current password is required to change password")
+            
+            if not verify_password(current_password, admin_user["password"]):
+                raise HTTPException(status_code=401, detail="Current password is incorrect")
+            
+            update_data["password"] = hash_password(password)
+            logger.info(f"Password updated for admin user {admin_id}")
+        
+        # Update admin user by ID instead of email
+        result = admin_collection.update_one(
+            {"_id": admin_id}, 
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Admin user not found")
+        
+        logger.info(f"Admin profile updated successfully. Modified count: {result.modified_count}")
+        
+        return {
+            "success": True,
+            "message": "Profile updated successfully",
+            "admin": {
+                "id": str(admin_id),
+                "name": name,
+                "email": email
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating admin profile: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating admin profile: {str(e)}")
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
