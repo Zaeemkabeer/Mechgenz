@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
+import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const { getImageUrl } = useWebsiteImages();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -23,6 +25,8 @@ const Header = () => {
     'CONTACT US'
   ];
 
+  const logoUrl = getImageUrl('logo', '/mechgenz-logo.jpg');
+
   return (
     <header 
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
@@ -36,7 +40,7 @@ const Header = () => {
           {/* Logo */}
           <div className="flex items-center space-x-4">
             <img
-              src="/mechgenz-logo.jpg"
+              src={logoUrl}
               alt="MECHGENZ Logo"
               className="h-12 w-12 rounded-lg shadow-sm"
             />

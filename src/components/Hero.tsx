@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const Hero = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const { getImageUrl } = useWebsiteImages();
   
   const slides = [
     {
-      image: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+      image: getImageUrl('hero_slide_1', 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'),
       title: 'RESPONSIBLE INFRASTRUCTURE',
       subtitle: 'we take your vision forward'
     },
     {
-      image: 'https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+      image: getImageUrl('hero_slide_2', 'https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'),
       title: 'BUILDING THE FUTURE',
       subtitle: 'innovative construction solutions'
     },
     {
-      image: 'https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+      image: getImageUrl('hero_slide_3', 'https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'),
       title: 'EXCELLENCE IN CONSTRUCTION',
       subtitle: 'delivering quality projects on time'
     }

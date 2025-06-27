@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Facebook, Twitter, Instagram, Globe, Phone, Mail, MapPin, Send, User, MessageSquare, Upload, X, FileText, Image as ImageIcon, Paperclip } from 'lucide-react';
+import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const Footer = () => {
+  const { getImageUrl } = useWebsiteImages();
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -127,6 +129,8 @@ const Footer = () => {
     { icon: <Twitter className="h-5 w-5" />, href: '#' },
     { icon: <Instagram className="h-5 w-5" />, href: '#' }
   ];
+
+  const logoUrl = getImageUrl('logo', '/mechgenz-logo.jpg');
 
   return (
     <footer className="bg-gray-900 text-white" id="contact-us">
@@ -397,7 +401,7 @@ const Footer = () => {
           <div className="lg:col-span-1">
             <div className="flex items-center space-x-4 mb-6">
               <img
-                src="/mechgenz-logo.jpg"
+                src={logoUrl}
                 alt="MECHGENZ Logo"
                 className="h-16 w-16 rounded-lg shadow-sm"
               />

@@ -1,8 +1,11 @@
 import React from 'react';
 import { Users, Shield, Target, Globe, Award, Handshake } from 'lucide-react';
 import AnimationWrapper from './AnimationWrapper';
+import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const AboutSection = () => {
+  const { getImageUrl } = useWebsiteImages();
+
   const focusAreas = [
     {
       icon: <Users className="h-8 w-8" />,
@@ -47,7 +50,7 @@ const AboutSection = () => {
           <AnimationWrapper animation="slideInLeft">
             <div className="relative">
               <img
-                src="https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"
+                src={getImageUrl('about_main', 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1')}
                 alt="Construction equipment and helmet"
                 className="rounded-2xl shadow-2xl w-full h-[500px] object-cover"
               />

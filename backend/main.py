@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, PyMongoError
 from datetime import datetime, timedelta
@@ -17,6 +17,8 @@ import base64
 import uuid
 import shutil
 import hashlib
+from PIL import Image
+import io
 
 # Load environment variables
 load_dotenv()
@@ -46,6 +48,7 @@ MONGODB_CONNECTION_STRING = os.getenv("MONGODB_CONNECTION_STRING")
 DATABASE_NAME = "MECHGENZ"
 COLLECTION_NAME = "contact_submissions"
 ADMIN_COLLECTION_NAME = "admin_users"
+IMAGES_COLLECTION_NAME = "website_images"
 
 # Resend configuration
 RESEND_API_KEY = "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW"
@@ -59,11 +62,14 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 # File upload configuration
 UPLOAD_DIR = "uploads"
+IMAGES_DIR = "public/images"
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 ALLOWED_EXTENSIONS = {'.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.txt'}
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 
-# Create upload directory if it doesn't exist
+# Create upload directories if they don't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(IMAGES_DIR, exist_ok=True)
 
 # Initialize Resend
 resend.api_key = RESEND_API_KEY
@@ -73,6 +79,7 @@ mongodb_client = None
 database = None
 collection = None
 admin_collection = None
+images_collection = None
 is_db_connected = False
 
 def hash_password(password: str) -> str:
@@ -84,7 +91,7 @@ def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
 
 def connect_to_mongodb():
-    global mongodb_client, database, collection, admin_collection, is_db_connected
+    global mongodb_client, database, collection, admin_collection, images_collection, is_db_connected
     try:
         if not MONGODB_CONNECTION_STRING:
             logger.error("MongoDB connection string not found in environment variables")
@@ -95,11 +102,15 @@ def connect_to_mongodb():
         database = mongodb_client[DATABASE_NAME]
         collection = database[COLLECTION_NAME]
         admin_collection = database[ADMIN_COLLECTION_NAME]
+        images_collection = database[IMAGES_COLLECTION_NAME]
         is_db_connected = True
         logger.info("Successfully connected to MongoDB Atlas")
         
         # Initialize default admin user if not exists
         initialize_default_admin()
+        
+        # Initialize default website images
+        initialize_default_images()
         
         return True
     except ConnectionFailure as e:
@@ -135,6 +146,131 @@ def initialize_default_admin():
     except Exception as e:
         logger.error(f"Error initializing default admin: {e}")
 
+def initialize_default_images():
+    """Initialize default website images configuration"""
+    try:
+        if images_collection is None:
+            return
+        
+        # Check if images configuration exists
+        existing_config = images_collection.find_one({"config_type": "website_images"})
+        
+        if not existing_config:
+            # Define all website images with their locations and purposes
+            default_images_config = {
+                "config_type": "website_images",
+                "images": {
+                    "logo": {
+                        "id": "logo",
+                        "name": "Company Logo",
+                        "description": "Main company logo displayed in header and footer",
+                        "current_url": "/mechgenz-logo.jpg",
+                        "locations": ["Header", "Footer"],
+                        "recommended_size": "200x200px",
+                        "category": "branding"
+                    },
+                    "hero_slide_1": {
+                        "id": "hero_slide_1",
+                        "name": "Hero Slide 1 - Tools & Equipment",
+                        "description": "First hero slider image showing tools and equipment",
+                        "current_url": "https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
+                        "locations": ["Hero Section - Slide 1"],
+                        "recommended_size": "1920x1080px",
+                        "category": "hero"
+                    },
+                    "hero_slide_2": {
+                        "id": "hero_slide_2",
+                        "name": "Hero Slide 2 - Construction Site",
+                        "description": "Second hero slider image showing construction work",
+                        "current_url": "https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
+                        "locations": ["Hero Section - Slide 2"],
+                        "recommended_size": "1920x1080px",
+                        "category": "hero"
+                    },
+                    "hero_slide_3": {
+                        "id": "hero_slide_3",
+                        "name": "Hero Slide 3 - Industrial Equipment",
+                        "description": "Third hero slider image showing industrial equipment",
+                        "current_url": "https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
+                        "locations": ["Hero Section - Slide 3"],
+                        "recommended_size": "1920x1080px",
+                        "category": "hero"
+                    },
+                    "about_main": {
+                        "id": "about_main",
+                        "name": "About Section - Main Image",
+                        "description": "Main image in the about section showing construction equipment",
+                        "current_url": "https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
+                        "locations": ["About Section"],
+                        "recommended_size": "800x600px",
+                        "category": "about"
+                    },
+                    "portfolio_civil_1": {
+                        "id": "portfolio_civil_1",
+                        "name": "Portfolio - Civil Structure 1",
+                        "description": "Portfolio image for civil structure projects",
+                        "current_url": "https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1",
+                        "locations": ["Portfolio Section - Civil Structure"],
+                        "recommended_size": "800x600px",
+                        "category": "portfolio"
+                    },
+                    "portfolio_civil_2": {
+                        "id": "portfolio_civil_2",
+                        "name": "Portfolio - Civil Structure 2",
+                        "description": "Portfolio image for civil structure projects",
+                        "current_url": "https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1",
+                        "locations": ["Portfolio Section - Civil Structure"],
+                        "recommended_size": "800x600px",
+                        "category": "portfolio"
+                    },
+                    "portfolio_road_1": {
+                        "id": "portfolio_road_1",
+                        "name": "Portfolio - Road Infrastructure 1",
+                        "description": "Portfolio image for road infrastructure projects",
+                        "current_url": "https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1",
+                        "locations": ["Portfolio Section - Road Infrastructure"],
+                        "recommended_size": "800x600px",
+                        "category": "portfolio"
+                    },
+                    "portfolio_road_2": {
+                        "id": "portfolio_road_2",
+                        "name": "Portfolio - Road Infrastructure 2",
+                        "description": "Portfolio image for road infrastructure projects",
+                        "current_url": "https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1",
+                        "locations": ["Portfolio Section - Road Infrastructure"],
+                        "recommended_size": "800x600px",
+                        "category": "portfolio"
+                    },
+                    "portfolio_fitout_1": {
+                        "id": "portfolio_fitout_1",
+                        "name": "Portfolio - Fit Out 1",
+                        "description": "Portfolio image for fit out projects",
+                        "current_url": "https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1",
+                        "locations": ["Portfolio Section - Fit Out"],
+                        "recommended_size": "800x600px",
+                        "category": "portfolio"
+                    },
+                    "portfolio_fitout_2": {
+                        "id": "portfolio_fitout_2",
+                        "name": "Portfolio - Fit Out 2",
+                        "description": "Portfolio image for fit out projects",
+                        "current_url": "https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1",
+                        "locations": ["Portfolio Section - Fit Out"],
+                        "recommended_size": "800x600px",
+                        "category": "portfolio"
+                    }
+                },
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            result = images_collection.insert_one(default_images_config)
+            logger.info(f"Default images configuration created with ID: {result.inserted_id}")
+        else:
+            logger.info("Images configuration already exists")
+    except Exception as e:
+        logger.error(f"Error initializing default images: {e}")
+
 def close_mongodb_connection():
     global mongodb_client, is_db_connected
     if mongodb_client:
@@ -167,6 +303,59 @@ def save_uploaded_file(file: UploadFile) -> Optional[Dict[str, str]]:
         }
     except Exception as e:
         logger.error(f"Error saving file: {e}")
+        return None
+
+def save_image_file(file: UploadFile) -> Optional[Dict[str, str]]:
+    """Save uploaded image file and return file info"""
+    try:
+        # Check file extension
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in IMAGE_EXTENSIONS:
+            return None
+        
+        # Generate unique filename
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(IMAGES_DIR, unique_filename)
+        
+        # Read and process image
+        image_data = file.file.read()
+        
+        # Optimize image using PIL
+        try:
+            image = Image.open(io.BytesIO(image_data))
+            
+            # Convert to RGB if necessary
+            if image.mode in ('RGBA', 'LA', 'P'):
+                image = image.convert('RGB')
+            
+            # Resize if too large (max 1920px width)
+            if image.width > 1920:
+                ratio = 1920 / image.width
+                new_height = int(image.height * ratio)
+                image = image.resize((1920, new_height), Image.Resampling.LANCZOS)
+            
+            # Save optimized image
+            image.save(file_path, 'JPEG', quality=85, optimize=True)
+            
+        except Exception as img_error:
+            logger.warning(f"Image optimization failed, saving original: {img_error}")
+            # Save original file if optimization fails
+            with open(file_path, "wb") as buffer:
+                buffer.write(image_data)
+        
+        # Generate public URL
+        public_url = f"/images/{unique_filename}"
+        
+        return {
+            "original_name": file.filename,
+            "saved_name": unique_filename,
+            "file_path": file_path,
+            "public_url": public_url,
+            "file_size": os.path.getsize(file_path),
+            "content_type": "image/jpeg"
+        }
+    except Exception as e:
+        logger.error(f"Error saving image file: {e}")
         return None
 
 def get_logo_base64():
@@ -635,6 +824,15 @@ async def health_check():
             "timestamp": datetime.utcnow().isoformat()
         })
 
+# Serve static images
+@app.get("/images/{filename}")
+async def serve_image(filename: str):
+    """Serve uploaded images"""
+    file_path = os.path.join(IMAGES_DIR, filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Image not found")
+
 @app.post("/api/contact")
 async def submit_contact_form(
     request: Request,
@@ -818,6 +1016,230 @@ async def get_submission_stats():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving stats: {str(e)}")
+
+# Website Images Management Endpoints
+
+@app.get("/api/website-images")
+async def get_website_images():
+    """Get all website images configuration"""
+    try:
+        if not is_db_connected or images_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        config = images_collection.find_one({"config_type": "website_images"})
+        if not config:
+            raise HTTPException(status_code=404, detail="Images configuration not found")
+        
+        # Convert ObjectId to string
+        config["_id"] = str(config["_id"])
+        
+        return {
+            "success": True,
+            "images": config["images"]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving images: {str(e)}")
+
+@app.get("/api/website-images/categories")
+async def get_image_categories():
+    """Get image categories for filtering"""
+    try:
+        if not is_db_connected or images_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        config = images_collection.find_one({"config_type": "website_images"})
+        if not config:
+            raise HTTPException(status_code=404, detail="Images configuration not found")
+        
+        categories = set()
+        for image_data in config["images"].values():
+            categories.add(image_data["category"])
+        
+        return {
+            "success": True,
+            "categories": sorted(list(categories))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving categories: {str(e)}")
+
+@app.post("/api/website-images/{image_id}/upload")
+async def upload_website_image(image_id: str, file: UploadFile = File(...)):
+    """Upload a new image for a specific website location"""
+    try:
+        if not is_db_connected or images_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        # Validate file type
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in IMAGE_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Invalid file type. Only images are allowed.")
+        
+        # Check file size
+        file.file.seek(0, 2)  # Seek to end
+        file_size = file.file.tell()
+        file.file.seek(0)  # Reset to beginning
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
+        
+        # Get current configuration
+        config = images_collection.find_one({"config_type": "website_images"})
+        if not config:
+            raise HTTPException(status_code=404, detail="Images configuration not found")
+        
+        # Check if image_id exists
+        if image_id not in config["images"]:
+            raise HTTPException(status_code=404, detail="Image ID not found")
+        
+        # Save the uploaded image
+        image_info = save_image_file(file)
+        if not image_info:
+            raise HTTPException(status_code=400, detail="Failed to save image")
+        
+        # Update the configuration with new image URL
+        new_url = image_info["public_url"]
+        update_result = images_collection.update_one(
+            {"config_type": "website_images"},
+            {
+                "$set": {
+                    f"images.{image_id}.current_url": new_url,
+                    f"images.{image_id}.updated_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if update_result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Failed to update image configuration")
+        
+        return {
+            "success": True,
+            "message": "Image uploaded successfully",
+            "image_id": image_id,
+            "new_url": new_url,
+            "file_info": {
+                "original_name": image_info["original_name"],
+                "file_size": image_info["file_size"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
+
+@app.put("/api/website-images/{image_id}")
+async def update_image_info(image_id: str, request: Request):
+    """Update image information (name, description, etc.)"""
+    try:
+        if not is_db_connected or images_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        data = await request.json()
+        
+        # Get current configuration
+        config = images_collection.find_one({"config_type": "website_images"})
+        if not config:
+            raise HTTPException(status_code=404, detail="Images configuration not found")
+        
+        # Check if image_id exists
+        if image_id not in config["images"]:
+            raise HTTPException(status_code=404, detail="Image ID not found")
+        
+        # Prepare update data
+        update_fields = {}
+        allowed_fields = ["name", "description"]
+        
+        for field in allowed_fields:
+            if field in data:
+                update_fields[f"images.{image_id}.{field}"] = data[field]
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        
+        # Add updated timestamp
+        update_fields[f"images.{image_id}.updated_at"] = datetime.utcnow()
+        update_fields["updated_at"] = datetime.utcnow()
+        
+        # Update the configuration
+        update_result = images_collection.update_one(
+            {"config_type": "website_images"},
+            {"$set": update_fields}
+        )
+        
+        if update_result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Failed to update image information")
+        
+        return {
+            "success": True,
+            "message": "Image information updated successfully",
+            "image_id": image_id,
+            "updated_fields": list(update_fields.keys())
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating image info: {str(e)}")
+
+@app.delete("/api/website-images/{image_id}/reset")
+async def reset_image_to_default(image_id: str):
+    """Reset an image to its default URL"""
+    try:
+        if not is_db_connected or images_collection is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        # Get current configuration
+        config = images_collection.find_one({"config_type": "website_images"})
+        if not config:
+            raise HTTPException(status_code=404, detail="Images configuration not found")
+        
+        # Check if image_id exists
+        if image_id not in config["images"]:
+            raise HTTPException(status_code=404, detail="Image ID not found")
+        
+        # Get the default URL (this would be the original URL from initialization)
+        # For now, we'll use a placeholder logic - in a real scenario, you'd store default URLs
+        image_data = config["images"][image_id]
+        
+        # Reset to a default based on category
+        default_urls = {
+            "branding": "/mechgenz-logo.jpg",
+            "hero": "https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
+            "about": "https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
+            "portfolio": "https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1"
+        }
+        
+        default_url = default_urls.get(image_data["category"], image_data["current_url"])
+        
+        # Update the configuration
+        update_result = images_collection.update_one(
+            {"config_type": "website_images"},
+            {
+                "$set": {
+                    f"images.{image_id}.current_url": default_url,
+                    f"images.{image_id}.updated_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if update_result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Failed to reset image")
+        
+        return {
+            "success": True,
+            "message": "Image reset to default successfully",
+            "image_id": image_id,
+            "default_url": default_url
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resetting image: {str(e)}")
 
 # Admin authentication endpoints
 @app.post("/api/admin/login")
