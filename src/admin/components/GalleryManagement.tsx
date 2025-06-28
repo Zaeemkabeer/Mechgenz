@@ -30,6 +30,7 @@ const GalleryManagement = () => {
   const [editingImage, setEditingImage] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     fetchImages();
@@ -64,6 +65,34 @@ const GalleryManagement = () => {
     }
   };
 
+  const getImageUrl = (imageUrl: string): string => {
+    // If it's already a full URL, return as is
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return imageUrl;
+    }
+    
+    // If it's a relative URL starting with /images/, make it absolute
+    if (imageUrl.startsWith('/images/')) {
+      return `http://localhost:8000${imageUrl}`;
+    }
+    
+    // If it's just a filename or relative path, construct the full URL
+    if (imageUrl.startsWith('/')) {
+      return `http://localhost:8000${imageUrl}`;
+    }
+    
+    // Default case - assume it's a filename in the images directory
+    return `http://localhost:8000/images/${imageUrl}`;
+  };
+
+  const handleImageError = (imageId: string) => {
+    setImageErrors(prev => ({ ...prev, [imageId]: true }));
+  };
+
+  const handleImageLoad = (imageId: string) => {
+    setImageErrors(prev => ({ ...prev, [imageId]: false }));
+  };
+
   const handleImageUpload = async (imageId: string, file: File) => {
     setUploadStatus(prev => ({
       ...prev,
@@ -96,6 +125,9 @@ const GalleryManagement = () => {
             updated_at: new Date().toISOString()
           }
         }));
+
+        // Clear any previous error for this image
+        setImageErrors(prev => ({ ...prev, [imageId]: false }));
 
         // Clear success status after 3 seconds
         setTimeout(() => {
@@ -177,6 +209,9 @@ const GalleryManagement = () => {
             updated_at: new Date().toISOString()
           }
         }));
+
+        // Clear any error for this image
+        setImageErrors(prev => ({ ...prev, [imageId]: false }));
       } else {
         const result = await response.json();
         alert(`Failed to reset image: ${result.detail}`);
@@ -217,6 +252,45 @@ const GalleryManagement = () => {
       portfolio: 'bg-orange-100 text-orange-800'
     };
     return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+  };
+
+  const renderImagePreview = (imageId: string, image: WebsiteImage) => {
+    const imageUrl = getImageUrl(image.current_url);
+    const hasError = imageErrors[imageId];
+
+    if (hasError) {
+      return (
+        <div className="w-full h-full bg-gray-200 flex flex-col items-center justify-center text-gray-500">
+          <Image className="h-12 w-12 mb-2" />
+          <span className="text-sm text-center px-2">Failed to load image</span>
+          <button
+            onClick={() => {
+              setImageErrors(prev => ({ ...prev, [imageId]: false }));
+              // Force reload by updating the image src
+              const img = document.querySelector(`img[data-image-id="${imageId}"]`) as HTMLImageElement;
+              if (img) {
+                img.src = imageUrl + '?t=' + Date.now();
+              }
+            }}
+            className="text-xs text-blue-500 hover:text-blue-700 mt-1"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <img
+        data-image-id={imageId}
+        src={imageUrl}
+        alt={image.name}
+        className="w-full h-full object-cover"
+        onError={() => handleImageError(imageId)}
+        onLoad={() => handleImageLoad(imageId)}
+        loading="lazy"
+      />
+    );
   };
 
   if (isLoading) {
@@ -274,15 +348,7 @@ const GalleryManagement = () => {
           <div key={imageId} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {/* Image Preview */}
             <div className="relative aspect-video bg-gray-100">
-              <img
-                src={image.current_url}
-                alt={image.name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = 'https://via.placeholder.com/400x300?text=Image+Not+Found';
-                }}
-              />
+              {renderImagePreview(imageId, image)}
               
               {/* Upload Status Overlay */}
               {uploadStatus[imageId]?.uploading && (
@@ -308,7 +374,7 @@ const GalleryManagement = () => {
 
               {/* Preview Button */}
               <button
-                onClick={() => setPreviewImage(image.current_url)}
+                onClick={() => setPreviewImage(getImageUrl(image.current_url))}
                 className="absolute top-2 left-2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all duration-200"
               >
                 <Eye className="h-4 w-4" />
@@ -453,6 +519,10 @@ const GalleryManagement = () => {
               src={previewImage}
               alt="Preview"
               className="max-w-full max-h-full object-contain rounded-lg"
+              onError={() => {
+                alert('Failed to load preview image');
+                setPreviewImage(null);
+              }}
             />
           </div>
         </div>
