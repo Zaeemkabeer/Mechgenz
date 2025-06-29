@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Facebook, Twitter, Instagram, Globe, Phone, Mail, MapPin, Send, User, MessageSquare, Upload, X, FileText, Image as ImageIcon, Paperclip } from 'lucide-react';
 import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const Footer = () => {
-  const { getImageUrl } = useWebsiteImages();
+  const [logoUrl, setLogoUrl] = useState('');
+  const [logoLoaded, setLogoLoaded] = useState(false);
+  const { getImageUrl, isLoading } = useWebsiteImages();
+  
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -15,6 +18,23 @@ const Footer = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (!isLoading) {
+      const imageUrl = getImageUrl('logo', '/mechgenz-logo.jpg');
+      
+      const img = new Image();
+      img.onload = () => {
+        setLogoUrl(imageUrl);
+        setLogoLoaded(true);
+      };
+      img.onerror = () => {
+        setLogoUrl('/mechgenz-logo.jpg');
+        setLogoLoaded(true);
+      };
+      img.src = imageUrl;
+    }
+  }, [isLoading, getImageUrl]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -129,8 +149,6 @@ const Footer = () => {
     { icon: <Twitter className="h-5 w-5" />, href: '#' },
     { icon: <Instagram className="h-5 w-5" />, href: '#' }
   ];
-
-  const logoUrl = getImageUrl('logo', '/mechgenz-logo.jpg');
 
   return (
     <footer className="bg-gray-900 text-white" id="contact-us">
@@ -400,11 +418,18 @@ const Footer = () => {
           {/* Company Info */}
           <div className="lg:col-span-1">
             <div className="flex items-center space-x-4 mb-6">
-              <img
-                src={logoUrl}
-                alt="MECHGENZ Logo"
-                className="h-16 w-16 rounded-lg shadow-sm"
-              />
+              <div className="h-16 w-16 rounded-lg shadow-sm overflow-hidden bg-gray-700">
+                {logoLoaded ? (
+                  <img
+                    src={logoUrl}
+                    alt="MECHGENZ Logo"
+                    className="h-full w-full object-cover transition-opacity duration-300"
+                    style={{ opacity: logoUrl ? 1 : 0 }}
+                  />
+                ) : (
+                  <div className="h-full w-full bg-gray-600 animate-pulse"></div>
+                )}
+              </div>
               <div className="flex flex-col">
                 <span className="text-2xl font-bold font-mechgenz tracking-wider text-white">
                   MECHGENZ

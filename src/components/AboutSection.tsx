@@ -1,10 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Shield, Target, Globe, Award, Handshake } from 'lucide-react';
 import AnimationWrapper from './AnimationWrapper';
 import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const AboutSection = () => {
-  const { getImageUrl } = useWebsiteImages();
+  const [aboutImageUrl, setAboutImageUrl] = useState('');
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const { getImageUrl, isLoading } = useWebsiteImages();
+
+  useEffect(() => {
+    if (!isLoading) {
+      const imageUrl = getImageUrl(
+        'about_main', 
+        'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
+      );
+      
+      const img = new Image();
+      img.onload = () => {
+        setAboutImageUrl(imageUrl);
+        setImageLoaded(true);
+      };
+      img.onerror = () => {
+        setAboutImageUrl('https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1');
+        setImageLoaded(true);
+      };
+      img.src = imageUrl;
+    }
+  }, [isLoading, getImageUrl]);
 
   const focusAreas = [
     {
@@ -49,11 +71,18 @@ const AboutSection = () => {
           {/* Image Side */}
           <AnimationWrapper animation="slideInLeft">
             <div className="relative">
-              <img
-                src={getImageUrl('about_main', 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1')}
-                alt="Construction equipment and helmet"
-                className="rounded-2xl shadow-2xl w-full h-[500px] object-cover"
-              />
+              <div className="rounded-2xl shadow-2xl w-full h-[500px] overflow-hidden bg-gray-200">
+                {imageLoaded ? (
+                  <img
+                    src={aboutImageUrl}
+                    alt="Construction equipment and helmet"
+                    className="w-full h-full object-cover transition-opacity duration-500"
+                    style={{ opacity: aboutImageUrl ? 1 : 0 }}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-300 animate-pulse"></div>
+                )}
+              </div>
               <div className="absolute -bottom-6 -right-6 bg-orange-500 p-6 rounded-xl shadow-lg">
                 <div className="text-white text-center">
                   <div className="text-3xl font-bold">15+</div>

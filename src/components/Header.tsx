@@ -5,7 +5,9 @@ import { useWebsiteImages } from '../hooks/useWebsiteImages';
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const { getImageUrl } = useWebsiteImages();
+  const [logoUrl, setLogoUrl] = useState('');
+  const [logoLoaded, setLogoLoaded] = useState(false);
+  const { getImageUrl, isLoading } = useWebsiteImages();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -14,6 +16,23 @@ const Header = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      const imageUrl = getImageUrl('logo', '/mechgenz-logo.jpg');
+      
+      const img = new Image();
+      img.onload = () => {
+        setLogoUrl(imageUrl);
+        setLogoLoaded(true);
+      };
+      img.onerror = () => {
+        setLogoUrl('/mechgenz-logo.jpg');
+        setLogoLoaded(true);
+      };
+      img.src = imageUrl;
+    }
+  }, [isLoading, getImageUrl]);
 
   const navItems = [
     'HOME',
@@ -24,8 +43,6 @@ const Header = () => {
     'POLICY',
     'CONTACT US'
   ];
-
-  const logoUrl = getImageUrl('logo', '/mechgenz-logo.jpg');
 
   return (
     <header 
@@ -39,11 +56,18 @@ const Header = () => {
         <div className="flex justify-between items-center py-3">
           {/* Logo */}
           <div className="flex items-center space-x-4">
-            <img
-              src={logoUrl}
-              alt="MECHGENZ Logo"
-              className="h-12 w-12 rounded-lg shadow-sm"
-            />
+            <div className="h-12 w-12 rounded-lg shadow-sm overflow-hidden bg-gray-200">
+              {logoLoaded ? (
+                <img
+                  src={logoUrl}
+                  alt="MECHGENZ Logo"
+                  className="h-full w-full object-cover transition-opacity duration-300"
+                  style={{ opacity: logoUrl ? 1 : 0 }}
+                />
+              ) : (
+                <div className="h-full w-full bg-gray-300 animate-pulse"></div>
+              )}
+            </div>
             <div className="flex flex-col">
               <span 
                 className={`text-2xl font-bold font-mechgenz tracking-wider transition-colors duration-300 ${
