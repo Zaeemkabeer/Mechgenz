@@ -176,9 +176,9 @@ const Footer = () => {
                     <div>
                       <h4 className="font-semibold text-white mb-2">Office Address</h4>
                       <p className="text-orange-100 leading-relaxed">
-                        31st Floor, Office #312<br />
-                        Marina Twin Towers, Tower B<br />
-                        P.O. Box 12784, Lusail, Qatar
+                        Buzwair Complex, 4th Floor<br />
+                        Rawdat Al Khail St, Doha Qatar<br />
+                        P.O. Box 22911
                       </p>
                     </div>
                   </div>
@@ -190,8 +190,6 @@ const Footer = () => {
                     <div>
                       <h4 className="font-semibold text-white mb-2">Phone Numbers</h4>
                       <div className="text-orange-100 space-y-1">
-                        <p>+974 44117639</p>
-                        <p>+974 44374547</p>
                         <p>+974 30401080</p>
                       </div>
                     </div>
