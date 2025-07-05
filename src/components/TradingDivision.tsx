@@ -1,9 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Wrench, Zap, Droplets, Shield, Settings, Monitor } from 'lucide-react';
+import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const TradingDivision = () => {
+  const { getImageUrl, isLoading } = useWebsiteImages();
+  const [categoryImages, setCategoryImages] = useState<{ [key: string]: string }>({});
+  const [imagesLoaded, setImagesLoaded] = useState(false);
+
   const tradingCategories = [
     {
+      id: 'mechanical_suppliers',
       icon: <Wrench className="h-12 w-12" />,
       title: 'Mechanical Suppliers',
       items: [
@@ -11,11 +17,10 @@ const TradingDivision = () => {
         'Ventilation fans, VAV boxes, ducts, and pipework',
         'Pumps, valves, expansion tanks, and HVAC control systems'
       ],
-      bgColor: 'bg-blue-50',
-      iconColor: 'text-blue-600',
-      hoverColor: 'hover:bg-blue-600'
+      fallbackImage: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
     },
     {
+      id: 'electrical_suppliers',
       icon: <Zap className="h-12 w-12" />,
       title: 'Electrical Suppliers',
       items: [
@@ -23,33 +28,83 @@ const TradingDivision = () => {
         'Distribution boards, breakers, switches, and lighting',
         'Cable management and earthing systems'
       ],
-      bgColor: 'bg-yellow-50',
-      iconColor: 'text-yellow-600',
-      hoverColor: 'hover:bg-yellow-600'
+      fallbackImage: 'https://images.pexels.com/photos/257736/pexels-photo-257736.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
     },
     {
+      id: 'plumbing_suppliers',
       icon: <Droplets className="h-12 w-12" />,
       title: 'Plumbing Suppliers',
       items: [
         'Full piping systems (PPR, PVC, HDPE, GI, copper)',
         'Water heaters, pumps, sanitary fixtures, and drainage components'
       ],
-      bgColor: 'bg-cyan-50',
-      iconColor: 'text-cyan-600',
-      hoverColor: 'hover:bg-cyan-600'
+      fallbackImage: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
     },
     {
+      id: 'fire_fighting_suppliers',
       icon: <Shield className="h-12 w-12" />,
       title: 'Fire Fighting & Fire Alarm Systems',
       items: [
         'Sprinklers, fire hose reels, and extinguishers',
         'Fire alarm panels, detectors, and control systems'
       ],
-      bgColor: 'bg-red-50',
-      iconColor: 'text-red-600',
-      hoverColor: 'hover:bg-red-600'
+      fallbackImage: 'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
     }
   ];
+
+  useEffect(() => {
+    if (!isLoading) {
+      const loadCategoryImages = async () => {
+        const imagePromises = tradingCategories.map(async (category) => {
+          const imageUrl = getImageUrl(category.id, category.fallbackImage);
+          
+          return new Promise<{ id: string; url: string }>((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve({ id: category.id, url: imageUrl });
+            img.onerror = () => resolve({ id: category.id, url: category.fallbackImage });
+            img.src = imageUrl;
+          });
+        });
+
+        try {
+          const results = await Promise.all(imagePromises);
+          const imageMap = results.reduce((acc, { id, url }) => {
+            acc[id] = url;
+            return acc;
+          }, {} as { [key: string]: string });
+          
+          setCategoryImages(imageMap);
+          setImagesLoaded(true);
+        } catch (error) {
+          console.error('Error loading category images:', error);
+          // Fallback to using fallback URLs
+          const fallbackMap = tradingCategories.reduce((acc, category) => {
+            acc[category.id] = category.fallbackImage;
+            return acc;
+          }, {} as { [key: string]: string });
+          setCategoryImages(fallbackMap);
+          setImagesLoaded(true);
+        }
+      };
+
+      loadCategoryImages();
+    }
+  }, [isLoading, getImageUrl]);
+
+  // Function to determine text color based on image brightness
+  const getTextColorClass = (imageUrl: string) => {
+    // For now, we'll use a simple approach based on the image URL
+    // In a real implementation, you might analyze the actual image brightness
+    const darkImages = [
+      'keys-workshop-mechanic-tools',
+      'electrical',
+      'fire',
+      'industrial'
+    ];
+    
+    const isDarkImage = darkImages.some(keyword => imageUrl.toLowerCase().includes(keyword));
+    return isDarkImage ? 'text-white' : 'text-gray-900';
+  };
 
   const bmsFeatures = [
     'Installation and integration of BMS for centralized control of HVAC, lighting, and energy systems',
@@ -59,6 +114,18 @@ const TradingDivision = () => {
     'Integration of renewable energy systems',
     'Advanced demand management solutions'
   ];
+
+  if (!imagesLoaded) {
+    return (
+      <section className="py-20 bg-gray-50" id="trading">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-20 bg-gray-50" id="trading">
@@ -76,29 +143,58 @@ const TradingDivision = () => {
 
         {/* Trading Categories Grid */}
         <div className="grid md:grid-cols-2 gap-8 mb-20">
-          {tradingCategories.map((category, index) => (
-            <div 
-              key={index}
-              className={`group ${category.bgColor} p-8 rounded-2xl border border-gray-200 ${category.hoverColor} hover:text-white transition-all duration-300 transform hover:-translate-y-2 hover:shadow-xl`}
-            >
-              <div className={`${category.iconColor} group-hover:text-white mb-6 flex justify-center transition-colors duration-300`}>
-                {category.icon}
+          {tradingCategories.map((category, index) => {
+            const backgroundImage = categoryImages[category.id];
+            const textColorClass = getTextColorClass(backgroundImage);
+            
+            return (
+              <div 
+                key={index}
+                className="group relative overflow-hidden p-8 rounded-2xl border border-gray-200 hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-3 min-h-[400px] flex flex-col justify-between"
+                style={{
+                  backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url(${backgroundImage})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat'
+                }}
+              >
+                {/* Background overlay for better text readability */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/30 group-hover:from-black/80 group-hover:via-black/50 group-hover:to-black/40 transition-all duration-500"></div>
+                
+                {/* Content */}
+                <div className="relative z-10 flex flex-col h-full">
+                  {/* Icon */}
+                  <div className="text-white mb-6 flex justify-center group-hover:scale-110 transition-transform duration-300">
+                    {category.icon}
+                  </div>
+                  
+                  {/* Title */}
+                  <h3 className="text-2xl font-bold text-white mb-6 text-center group-hover:text-orange-300 transition-colors duration-300">
+                    {category.title}
+                  </h3>
+                  
+                  {/* Items List */}
+                  <ul className="space-y-3 flex-grow">
+                    {category.items.map((item, itemIndex) => (
+                      <li key={itemIndex} className="flex items-start space-x-3">
+                        <div className="w-2 h-2 bg-orange-400 group-hover:bg-orange-300 rounded-full mt-2 flex-shrink-0 transition-colors duration-300"></div>
+                        <span className="text-white/90 group-hover:text-white transition-colors duration-300 leading-relaxed">
+                          {item}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  
+                  {/* Hover effect indicator */}
+                  <div className="mt-6 text-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <div className="inline-block px-4 py-2 bg-orange-500 text-white rounded-full text-sm font-medium">
+                      Learn More
+                    </div>
+                  </div>
+                </div>
               </div>
-              
-              <h3 className="text-2xl font-bold text-gray-900 group-hover:text-white mb-6 text-center transition-colors duration-300">
-                {category.title}
-              </h3>
-              
-              <ul className="space-y-3">
-                {category.items.map((item, itemIndex) => (
-                  <li key={itemIndex} className="flex items-start space-x-3">
-                    <div className={`w-2 h-2 ${category.iconColor.replace('text-', 'bg-')} group-hover:bg-white rounded-full mt-2 flex-shrink-0 transition-colors duration-300`}></div>
-                    <span className="text-gray-700 group-hover:text-white transition-colors duration-300">{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* BMS & Instrumentation Systems Section */}
