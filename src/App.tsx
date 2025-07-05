@@ -5,6 +5,7 @@ import Hero from './components/Hero';
 import AboutSection from './components/AboutSection';
 import ServicesSection from './components/ServicesSection';
 import TradingDivision from './components/TradingDivision';
+import Portfolio from './components/Portfolio';
 import CorporatePhilosophy from './components/CorporatePhilosophy';
 import CodeOfEthics from './components/CodeOfEthics';
 import Footer from './components/Footer';
@@ -18,6 +19,7 @@ function MainWebsite() {
       <AboutSection />
       <ServicesSection />
       <TradingDivision />
+      <Portfolio />
       <CorporatePhilosophy />
       <CodeOfEthics />
       <Footer />

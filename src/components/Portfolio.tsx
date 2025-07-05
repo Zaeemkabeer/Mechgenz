@@ -1,116 +1,178 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWebsiteImages } from '../hooks/useWebsiteImages';
+import AnimationWrapper from './AnimationWrapper';
 
 const Portfolio = () => {
   const [activeCategory, setActiveCategory] = useState('CIVIL STRUCTURE');
-  const { getImageUrl } = useWebsiteImages();
+  const [loadedImages, setLoadedImages] = useState<{ [key: string]: string[] }>({});
+  const [imagesReady, setImagesReady] = useState(false);
+  const { getImageUrl, isLoading } = useWebsiteImages();
   
   const categories = ['CIVIL STRUCTURE', 'ROAD INFRASTRUCTURE', 'FIT OUT', 'SPECIAL INSTALLATION'];
   
-  const projects = {
+  const projectImageConfigs = {
     'CIVIL STRUCTURE': [
-      getImageUrl('portfolio_civil_1', 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'),
-      getImageUrl('portfolio_civil_2', 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'),
-      'https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
+      { id: 'portfolio_civil_1', fallback: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { id: 'portfolio_civil_2', fallback: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' }
     ],
     'ROAD INFRASTRUCTURE': [
-      getImageUrl('portfolio_road_1', 'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'),
-      getImageUrl('portfolio_road_2', 'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'),
-      'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
+      { id: 'portfolio_road_1', fallback: 'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { id: 'portfolio_road_2', fallback: 'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1202723/pexels-photo-1202723.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' }
     ],
     'FIT OUT': [
-      getImageUrl('portfolio_fitout_1', 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'),
-      getImageUrl('portfolio_fitout_2', 'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'),
-      'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
+      { id: 'portfolio_fitout_1', fallback: 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { id: 'portfolio_fitout_2', fallback: 'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1571463/pexels-photo-1571463.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' }
     ],
     'SPECIAL INSTALLATION': [
-      'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
-      'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1'
+      { id: 'portfolio_special_1', fallback: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { id: 'portfolio_special_2', fallback: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' },
+      { fallback: 'https://images.pexels.com/photos/162553/keys-workshop-mechanic-tools-162553.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1' }
     ]
   };
+
+  // Preload all images when component mounts
+  useEffect(() => {
+    if (!isLoading) {
+      const loadAllImages = async () => {
+        const categoryImages: { [key: string]: string[] } = {};
+
+        for (const [category, configs] of Object.entries(projectImageConfigs)) {
+          const imagePromises = configs.map(async (config) => {
+            if (config.id) {
+              const imageUrl = getImageUrl(config.id, config.fallback);
+              
+              return new Promise<string>((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(imageUrl);
+                img.onerror = () => resolve(config.fallback);
+                img.src = imageUrl;
+              });
+            } else {
+              return Promise.resolve(config.fallback);
+            }
+          });
+
+          try {
+            const results = await Promise.all(imagePromises);
+            categoryImages[category] = results;
+          } catch (error) {
+            console.error(`Error loading images for ${category}:`, error);
+            // Fallback to using fallback URLs
+            categoryImages[category] = configs.map(config => config.fallback);
+          }
+        }
+
+        setLoadedImages(categoryImages);
+        setImagesReady(true);
+      };
+
+      loadAllImages();
+    }
+  }, [isLoading, getImageUrl]);
+
+  // Show loading state until images are ready
+  if (!imagesReady) {
+    return (
+      <section className="py-20 bg-gray-50" id="portfolio">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-20 bg-gray-50" id="portfolio">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center mb-16">
-          <span className="text-orange-500 font-semibold text-lg">PROJECT PORTFOLIO</span>
-          <h2 className="text-4xl font-bold text-gray-900 mt-4 mb-8">
-            Our Recent Work
-          </h2>
-          <p className="text-gray-600 text-lg max-w-3xl mx-auto">
-            Explore our diverse portfolio of successful construction projects across Qatar, showcasing our expertise in various construction sectors.
-          </p>
-        </div>
+        <AnimationWrapper>
+          <div className="text-center mb-16">
+            <span className="text-orange-500 font-semibold text-lg">PROJECT PORTFOLIO</span>
+            <h2 className="text-4xl font-bold text-gray-900 mt-4 mb-8">
+              Our Recent Work
+            </h2>
+            <p className="text-gray-600 text-lg max-w-3xl mx-auto">
+              Explore our diverse portfolio of successful construction projects across Qatar, showcasing our expertise in various construction sectors.
+            </p>
+          </div>
+        </AnimationWrapper>
 
         {/* Category Filter */}
-        <div className="flex flex-wrap justify-center gap-4 mb-12">
-          {categories.map((category) => (
-            <button
-              key={category}
-              onClick={() => setActiveCategory(category)}
-              className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
-                activeCategory === category
-                  ? 'bg-orange-500 text-white shadow-lg'
-                  : 'bg-white text-gray-700 hover:bg-orange-100 hover:text-orange-600'
-              }`}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
+        <AnimationWrapper animation="slideInUp" delay={200}>
+          <div className="flex flex-wrap justify-center gap-4 mb-12">
+            {categories.map((category) => (
+              <button
+                key={category}
+                onClick={() => setActiveCategory(category)}
+                className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
+                  activeCategory === category
+                    ? 'bg-orange-500 text-white shadow-lg transform scale-105'
+                    : 'bg-white text-gray-700 hover:bg-orange-100 hover:text-orange-600'
+                }`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        </AnimationWrapper>
 
         {/* Projects Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {projects[activeCategory].map((image, index) => (
-            <div 
-              key={index}
-              className="group relative overflow-hidden rounded-xl bg-white shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2"
-            >
-              <div className="aspect-square overflow-hidden">
-                <img
-                  src={image}
-                  alt={`Project ${index + 1}`}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                />
-              </div>
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <div className="absolute bottom-4 left-4 text-white">
-                  <h4 className="font-semibold">{activeCategory}</h4>
-                  <p className="text-sm opacity-90">Project {index + 1}</p>
+          {loadedImages[activeCategory]?.map((image, index) => (
+            <AnimationWrapper key={`${activeCategory}-${index}`} animation="scaleIn" delay={index * 50}>
+              <div className="group relative overflow-hidden rounded-xl bg-white shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2">
+                <div className="aspect-square overflow-hidden">
+                  <img
+                    src={image}
+                    alt={`${activeCategory} Project ${index + 1}`}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    loading="lazy"
+                  />
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="absolute bottom-4 left-4 text-white">
+                    <h4 className="font-semibold">{activeCategory}</h4>
+                    <p className="text-sm opacity-90">Project {index + 1}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            </AnimationWrapper>
           ))}
         </div>
 
         {/* Call to Action */}
-        <div className="text-center mt-16">
-          <button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
-            View All Projects
-          </button>
-        </div>
+        <AnimationWrapper animation="fadeInUp" delay={400}>
+          <div className="text-center mt-16">
+            <button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+              View All Projects
+            </button>
+          </div>
+        </AnimationWrapper>
       </div>
     </section>
   );

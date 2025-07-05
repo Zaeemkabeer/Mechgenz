@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader, MapPin, Tag, Calendar, RefreshCw, Settings } from 'lucide-react';
 
 interface WebsiteImage {
   id: string;
   name: string;
   description: string;
   current_url: string;
+  default_url: string;
   locations: string[];
   recommended_size: string;
   category: string;
@@ -31,6 +32,7 @@ const GalleryManagement = () => {
   const [editForm, setEditForm] = useState({ name: '', description: '' });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<{ [key: string]: boolean }>({});
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchImages();
@@ -39,15 +41,27 @@ const GalleryManagement = () => {
 
   const fetchImages = async () => {
     try {
+      console.log('🔄 Fetching images from API...');
       const response = await fetch('http://localhost:8000/api/website-images');
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Fetched images data:', data);
         setImages(data.images || {});
+        
+        if (Object.keys(data.images || {}).length === 0) {
+          console.warn('⚠️ No images found in response, attempting to reinitialize...');
+          await reinitializeImages();
+        }
       } else {
-        console.error('Failed to fetch images');
+        console.error('❌ Failed to fetch images:', response.status, response.statusText);
+        // Try to reinitialize if fetch fails
+        await reinitializeImages();
       }
     } catch (error) {
-      console.error('Error fetching images:', error);
+      console.error('❌ Error fetching images:', error);
+      // Try to reinitialize on error
+      await reinitializeImages();
     } finally {
       setIsLoading(false);
     }
@@ -59,10 +73,40 @@ const GalleryManagement = () => {
       if (response.ok) {
         const data = await response.json();
         setCategories(data.categories || []);
+        console.log('📂 Fetched categories:', data.categories);
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
     }
+  };
+
+  const reinitializeImages = async () => {
+    try {
+      console.log('🔄 Attempting to reinitialize images...');
+      const response = await fetch('http://localhost:8000/api/website-images/reinitialize', {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        console.log('✅ Images reinitialized successfully');
+        // Fetch images again after reinitializing
+        setTimeout(() => {
+          fetchImages();
+          fetchCategories();
+        }, 1000);
+      } else {
+        console.error('❌ Failed to reinitialize images');
+      }
+    } catch (error) {
+      console.error('❌ Error reinitializing images:', error);
+    }
+  };
+
+  const refreshImages = async () => {
+    setRefreshing(true);
+    await fetchImages();
+    await fetchCategories();
+    setRefreshing(false);
   };
 
   const getImageUrl = (imageUrl: string): string => {
@@ -86,10 +130,12 @@ const GalleryManagement = () => {
   };
 
   const handleImageError = (imageId: string) => {
+    console.log(`❌ Image failed to load for ${imageId}`);
     setImageErrors(prev => ({ ...prev, [imageId]: true }));
   };
 
   const handleImageLoad = (imageId: string) => {
+    console.log(`✅ Image loaded successfully for ${imageId}`);
     setImageErrors(prev => ({ ...prev, [imageId]: false }));
   };
 
@@ -249,7 +295,12 @@ const GalleryManagement = () => {
       branding: 'bg-purple-100 text-purple-800',
       hero: 'bg-blue-100 text-blue-800',
       about: 'bg-green-100 text-green-800',
-      portfolio: 'bg-orange-100 text-orange-800'
+      portfolio: 'bg-orange-100 text-orange-800',
+      trading: 'bg-red-100 text-red-800',
+      services: 'bg-indigo-100 text-indigo-800',
+      contact: 'bg-pink-100 text-pink-800',
+      team: 'bg-yellow-100 text-yellow-800',
+      testimonials: 'bg-teal-100 text-teal-800'
     };
     return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
@@ -257,6 +308,8 @@ const GalleryManagement = () => {
   const renderImagePreview = (imageId: string, image: WebsiteImage) => {
     const imageUrl = getImageUrl(image.current_url);
     const hasError = imageErrors[imageId];
+
+    console.log(`🖼️ Rendering image ${imageId}:`, { imageUrl, hasError, current_url: image.current_url });
 
     if (hasError) {
       return (
@@ -296,7 +349,10 @@ const GalleryManagement = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading gallery images...</p>
+        </div>
       </div>
     );
   }
@@ -304,205 +360,357 @@ const GalleryManagement = () => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Gallery Management</h1>
-        <p className="text-gray-600 mt-2">Manage all website images from one central location</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Gallery Management</h1>
+          <p className="text-gray-600 mt-2">Manage all website images from one central location</p>
+        </div>
+        <div className="flex space-x-3">
+          <button
+            onClick={reinitializeImages}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors duration-200"
+          >
+            <Settings className="h-4 w-4" />
+            <span>Reinitialize</span>
+          </button>
+          <button
+            onClick={refreshImages}
+            disabled={refreshing}
+            className="flex items-center space-x-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
-      {/* Filters and Search */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search images by name, description, or location..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-              />
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Images</p>
+              <p className="text-3xl font-bold text-gray-900">{Object.keys(images).length}</p>
+            </div>
+            <div className="bg-blue-100 p-3 rounded-lg">
+              <Image className="h-6 w-6 text-blue-600" />
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Filter className="h-5 w-5 text-gray-400" />
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-            >
-              <option value="all">All Categories</option>
-              {categories.map(category => (
-                <option key={category} value={category}>
-                  {category.charAt(0).toUpperCase() + category.slice(1)}
-                </option>
-              ))}
-            </select>
+        </div>
+        
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Categories</p>
+              <p className="text-3xl font-bold text-gray-900">{categories.length}</p>
+            </div>
+            <div className="bg-green-100 p-3 rounded-lg">
+              <Tag className="h-6 w-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Custom Images</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {Object.values(images).filter(img => img.current_url.startsWith('/images/')).length}
+              </p>
+            </div>
+            <div className="bg-orange-100 p-3 rounded-lg">
+              <Upload className="h-6 w-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Recently Updated</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {Object.values(images).filter(img => {
+                  if (!img.updated_at) return false;
+                  const updateDate = new Date(img.updated_at);
+                  const weekAgo = new Date();
+                  weekAgo.setDate(weekAgo.getDate() - 7);
+                  return updateDate > weekAgo;
+                }).length}
+              </p>
+            </div>
+            <div className="bg-purple-100 p-3 rounded-lg">
+              <Calendar className="h-6 w-6 text-purple-600" />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Images Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredImages.map(([imageId, image]) => (
-          <div key={imageId} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            {/* Image Preview */}
-            <div className="relative aspect-video bg-gray-100">
-              {renderImagePreview(imageId, image)}
-              
-              {/* Upload Status Overlay */}
-              {uploadStatus[imageId]?.uploading && (
-                <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                  <div className="text-white text-center">
-                    <Loader className="h-8 w-8 animate-spin mx-auto mb-2" />
-                    <p>Uploading...</p>
-                  </div>
-                </div>
-              )}
+      {/* Debug Information */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-yellow-800 mb-2">Debug Information</h3>
+          <p className="text-xs text-yellow-700">Total images loaded: {Object.keys(images).length}</p>
+          <p className="text-xs text-yellow-700">Categories: {categories.join(', ')}</p>
+          <p className="text-xs text-yellow-700">Filtered images: {filteredImages.length}</p>
+          <p className="text-xs text-yellow-700">API Status: {Object.keys(images).length > 0 ? '✅ Connected' : '❌ No Data'}</p>
+        </div>
+      )}
 
-              {uploadStatus[imageId]?.success && (
-                <div className="absolute top-2 right-2 bg-green-500 text-white p-2 rounded-full">
-                  <CheckCircle className="h-4 w-4" />
-                </div>
-              )}
-
-              {uploadStatus[imageId]?.error && (
-                <div className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full">
-                  <AlertCircle className="h-4 w-4" />
-                </div>
-              )}
-
-              {/* Preview Button */}
-              <button
-                onClick={() => setPreviewImage(getImageUrl(image.current_url))}
-                className="absolute top-2 left-2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all duration-200"
-              >
-                <Eye className="h-4 w-4" />
-              </button>
+      {/* Connection Status */}
+      {Object.keys(images).length === 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="h-8 w-8 text-red-600" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-800">No Images Found</h3>
+              <p className="text-red-700 mt-1">
+                Unable to load website images. This could be due to:
+              </p>
+              <ul className="list-disc list-inside text-red-700 mt-2 space-y-1">
+                <li>Backend server is not running</li>
+                <li>Database connection issues</li>
+                <li>Images not initialized in the database</li>
+              </ul>
+              <div className="mt-4 space-x-3">
+                <button
+                  onClick={reinitializeImages}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                >
+                  Try Reinitialize
+                </button>
+                <button
+                  onClick={refreshImages}
+                  className="bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                >
+                  Retry Connection
+                </button>
+              </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Image Info */}
-            <div className="p-6">
-              {editingImage === imageId ? (
-                <div className="space-y-4">
+      {/* Filters and Search */}
+      {Object.keys(images).length > 0 && (
+        <>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <input
                     type="text"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="Image name"
+                    placeholder="Search images by name, description, or location..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   />
-                  <textarea
-                    value={editForm.description}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                    placeholder="Image description"
-                  />
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleImageEdit(imageId)}
-                      className="flex-1 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
-                    >
-                      <Save className="h-4 w-4" />
-                      <span>Save</span>
-                    </button>
-                    <button
-                      onClick={cancelEditing}
-                      className="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
-                    >
-                      <X className="h-4 w-4" />
-                      <span>Cancel</span>
-                    </button>
-                  </div>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{image.name}</h3>
-                    <p className="text-gray-600 text-sm mb-3">{image.description}</p>
-                    
-                    {/* Category Badge */}
+              </div>
+              <div className="flex items-center space-x-2">
+                <Filter className="h-5 w-5 text-gray-400" />
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                >
+                  <option value="all">All Categories</option>
+                  {categories.map(category => (
+                    <option key={category} value={category}>
+                      {category.charAt(0).toUpperCase() + category.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Images Grid */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredImages.map(([imageId, image]) => (
+              <div key={imageId} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300">
+                {/* Image Preview */}
+                <div className="relative aspect-video bg-gray-100">
+                  {renderImagePreview(imageId, image)}
+                  
+                  {/* Upload Status Overlay */}
+                  {uploadStatus[imageId]?.uploading && (
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                      <div className="text-white text-center">
+                        <Loader className="h-8 w-8 animate-spin mx-auto mb-2" />
+                        <p>Uploading...</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {uploadStatus[imageId]?.success && (
+                    <div className="absolute top-2 right-2 bg-green-500 text-white p-2 rounded-full">
+                      <CheckCircle className="h-4 w-4" />
+                    </div>
+                  )}
+
+                  {uploadStatus[imageId]?.error && (
+                    <div className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full">
+                      <AlertCircle className="h-4 w-4" />
+                    </div>
+                  )}
+
+                  {/* Preview Button */}
+                  <button
+                    onClick={() => setPreviewImage(getImageUrl(image.current_url))}
+                    className="absolute top-2 left-2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all duration-200"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+
+                  {/* Category Badge */}
+                  <div className="absolute bottom-2 left-2">
                     <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(image.category)}`}>
                       {image.category.charAt(0).toUpperCase() + image.category.slice(1)}
                     </span>
                   </div>
+                </div>
 
-                  {/* Locations */}
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Used in:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {image.locations.map((location, index) => (
-                        <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
-                          {location}
-                        </span>
-                      ))}
+                {/* Image Info */}
+                <div className="p-6">
+                  {editingImage === imageId ? (
+                    <div className="space-y-4">
+                      <input
+                        type="text"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Image name"
+                      />
+                      <textarea
+                        value={editForm.description}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                        placeholder="Image description"
+                      />
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleImageEdit(imageId)}
+                          className="flex-1 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
+                        >
+                          <Save className="h-4 w-4" />
+                          <span>Save</span>
+                        </button>
+                        <button
+                          onClick={cancelEditing}
+                          className="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
+                        >
+                          <X className="h-4 w-4" />
+                          <span>Cancel</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{image.name}</h3>
+                        <p className="text-gray-600 text-sm mb-3">{image.description}</p>
+                      </div>
 
-                  {/* Recommended Size */}
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700">Recommended Size:</h4>
-                    <p className="text-sm text-gray-600">{image.recommended_size}</p>
-                  </div>
+                      {/* Locations */}
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                          <MapPin className="h-4 w-4 mr-1" />
+                          Used in:
+                        </h4>
+                        <div className="flex flex-wrap gap-1">
+                          {image.locations.map((location, index) => (
+                            <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                              {location}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
 
-                  {/* Error Message */}
-                  {uploadStatus[imageId]?.error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                      <p className="text-red-800 text-sm">{uploadStatus[imageId].error}</p>
+                      {/* Recommended Size */}
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700">Recommended Size:</h4>
+                        <p className="text-sm text-gray-600">{image.recommended_size}</p>
+                      </div>
+
+                      {/* Current URL Info */}
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700">Image Source:</h4>
+                        <p className="text-sm text-gray-600 truncate" title={image.current_url}>
+                          {image.current_url.startsWith('/images/') ? 'Custom Upload' : 'External URL'}
+                        </p>
+                      </div>
+
+                      {/* Last Updated */}
+                      {image.updated_at && (
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-700">Last Updated:</h4>
+                          <p className="text-sm text-gray-600">
+                            {new Date(image.updated_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Error Message */}
+                      {uploadStatus[imageId]?.error && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                          <p className="text-red-800 text-sm">{uploadStatus[imageId].error}</p>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="cursor-pointer">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleImageUpload(imageId, file);
+                              }
+                            }}
+                            className="hidden"
+                            disabled={uploadStatus[imageId]?.uploading}
+                          />
+                          <div className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm">
+                            <Upload className="h-4 w-4" />
+                            <span>Upload</span>
+                          </div>
+                        </label>
+
+                        <button
+                          onClick={() => startEditing(imageId)}
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm"
+                        >
+                          <Edit className="h-4 w-4" />
+                          <span>Edit</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleImageReset(imageId)}
+                          className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          <span>Reset</span>
+                        </button>
+                      </div>
                     </div>
                   )}
-
-                  {/* Action Buttons */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <label className="cursor-pointer">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            handleImageUpload(imageId, file);
-                          }
-                        }}
-                        className="hidden"
-                        disabled={uploadStatus[imageId]?.uploading}
-                      />
-                      <div className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm">
-                        <Upload className="h-4 w-4" />
-                        <span>Upload</span>
-                      </div>
-                    </label>
-
-                    <button
-                      onClick={() => startEditing(imageId)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm"
-                    >
-                      <Edit className="h-4 w-4" />
-                      <span>Edit</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleImageReset(imageId)}
-                      className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                      <span>Reset</span>
-                    </button>
-                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {filteredImages.length === 0 && (
-        <div className="text-center py-12">
-          <Image className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No images found</h3>
-          <p className="text-gray-600">Try adjusting your search or filter criteria.</p>
-        </div>
+          {filteredImages.length === 0 && Object.keys(images).length > 0 && (
+            <div className="text-center py-12">
+              <Image className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No images found</h3>
+              <p className="text-gray-600">Try adjusting your search or filter criteria.</p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Image Preview Modal */}
