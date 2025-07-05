@@ -476,17 +476,14 @@ const Footer = () => {
             <h3 className="text-xl font-bold mb-6 text-orange-500">BUSINESS HOURS</h3>
             <div className="space-y-3 text-gray-300">
               <div className="flex justify-between">
-                <span>Sunday - Thursday:</span>
+                <span>Saturday - Thursday:</span>
                 <span>8:00 AM - 6:00 PM</span>
               </div>
               <div className="flex justify-between">
                 <span>Friday:</span>
-                <span>2:00 PM - 6:00 PM</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Saturday:</span>
                 <span>Closed</span>
               </div>
+              
             </div>
             
             <div className="mt-8">
