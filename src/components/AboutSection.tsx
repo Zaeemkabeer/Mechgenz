@@ -83,12 +83,6 @@ const AboutSection = () => {
                   <div className="w-full h-full bg-gray-300 animate-pulse"></div>
                 )}
               </div>
-              <div className="absolute -bottom-6 -right-6 bg-orange-500 p-6 rounded-xl shadow-lg">
-                <div className="text-white text-center">
-                  <div className="text-3xl font-bold">15+</div>
-                  <div className="text-sm">Years Experience</div>
-                </div>
-              </div>
             </div>
           </AnimationWrapper>
 

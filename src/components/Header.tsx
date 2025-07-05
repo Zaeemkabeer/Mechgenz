@@ -35,14 +35,22 @@ const Header = () => {
   }, [isLoading, getImageUrl]);
 
   const navItems = [
-    'HOME',
-    'ABOUT US',
-    'BUSINESS',
-    'TRADING',
-    'PHILOSOPHY',
-    'POLICY',
-    'CONTACT US'
+    { label: 'HOME', href: '#' },
+    { label: 'ABOUT US', href: '#about-us' },
+    { label: 'BUSINESS', href: '#business' },
+    { label: 'TRADING', href: '#trading' },
+    { label: 'PHILOSOPHY', href: '#philosophy' },
+    { label: 'POLICY', href: '#policy' },
+    { label: 'CONTACT US', href: '#contact-us' }
   ];
+
+  const handleNavClick = (href: string) => {
+    if (href === '#') {
+      // Scroll to top for HOME
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setIsMenuOpen(false);
+  };
 
   return (
     <header 
@@ -91,12 +99,18 @@ const Header = () => {
             {navItems.map((item, index) => (
               <a
                 key={index}
-                href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
+                href={item.href}
+                onClick={(e) => {
+                  if (item.href === '#') {
+                    e.preventDefault();
+                    handleNavClick(item.href);
+                  }
+                }}
                 className={`text-sm font-medium transition-colors duration-300 hover:text-orange-500 ${
                   isScrolled ? 'text-gray-700' : 'text-white'
                 }`}
               >
-                {item}
+                {item.label}
               </a>
             ))}
           </nav>
@@ -119,11 +133,16 @@ const Header = () => {
               {navItems.map((item, index) => (
                 <a
                   key={index}
-                  href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
+                  href={item.href}
+                  onClick={(e) => {
+                    if (item.href === '#') {
+                      e.preventDefault();
+                    }
+                    handleNavClick(item.href);
+                  }}
                   className="text-gray-700 font-medium py-2 px-3 rounded-md hover:bg-orange-500 hover:text-white transition-colors duration-200"
-                  onClick={() => setIsMenuOpen(false)}
                 >
-                  {item}
+                  {item.label}
                 </a>
               ))}
             </nav>

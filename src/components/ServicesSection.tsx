@@ -120,7 +120,7 @@ const ServicesSection = () => {
 
         {/* Construction Capabilities */}
         <AnimationWrapper animation="fadeInUp">
-          <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-8 lg:p-12 text-white mb-16">
+          <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-8 lg:p-12 text-white">
             <div className="text-center mb-8">
               <h3 className="text-3xl font-bold mb-4">Construction Excellence</h3>
               <div className="w-24 h-1 bg-orange-500 mx-auto"></div>
@@ -161,23 +161,6 @@ const ServicesSection = () => {
             </div>
           </div>
         </AnimationWrapper>
-
-        {/* Statistics Section */}
-        <div className="grid md:grid-cols-4 gap-8">
-          {[
-            { number: '500+', label: 'Projects Completed' },
-            { number: '15+', label: 'Years Experience' },
-            { number: '100%', label: 'Client Satisfaction' },
-            { number: '24/7', label: 'Technical Support' }
-          ].map((stat, index) => (
-            <AnimationWrapper key={index} animation="bounceIn" delay={index * 100}>
-              <div className="text-center p-6">
-                <div className="text-4xl font-bold text-orange-500 mb-2">{stat.number}</div>
-                <div className="text-gray-600">{stat.label}</div>
-              </div>
-            </AnimationWrapper>
-          ))}
-        </div>
       </div>
     </section>
   );
