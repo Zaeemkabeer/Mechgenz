@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader, MapPin, Tag, Calendar, RefreshCw, Settings } from 'lucide-react';
+import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader, MapPin, Tag, Calendar, RefreshCw, Settings, Trash2 } from 'lucide-react';
 
 interface WebsiteImage {
   id: string;
@@ -33,15 +33,36 @@ const GalleryManagement = () => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<{ [key: string]: boolean }>({});
   const [refreshing, setRefreshing] = useState(false);
+  const [serverConnected, setServerConnected] = useState(false);
 
   useEffect(() => {
     fetchImages();
     fetchCategories();
   }, []);
 
+  const checkServerConnection = async (): Promise<boolean> => {
+    try {
+      const response = await fetch('http://localhost:8000/health');
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  };
+
   const fetchImages = async () => {
     try {
       console.log('🔄 Fetching images from API...');
+      
+      // Check server connection first
+      const isConnected = await checkServerConnection();
+      setServerConnected(isConnected);
+      
+      if (!isConnected) {
+        console.log('❌ Server not available');
+        setIsLoading(false);
+        return;
+      }
+      
       const response = await fetch('http://localhost:8000/api/website-images');
       
       if (response.ok) {
@@ -60,6 +81,7 @@ const GalleryManagement = () => {
       }
     } catch (error) {
       console.error('❌ Error fetching images:', error);
+      setServerConnected(false);
       // Try to reinitialize on error
       await reinitializeImages();
     } finally {
@@ -69,6 +91,9 @@ const GalleryManagement = () => {
 
   const fetchCategories = async () => {
     try {
+      const isConnected = await checkServerConnection();
+      if (!isConnected) return;
+      
       const response = await fetch('http://localhost:8000/api/website-images/categories');
       if (response.ok) {
         const data = await response.json();
@@ -109,6 +134,17 @@ const GalleryManagement = () => {
     setRefreshing(false);
   };
 
+  const clearImageCache = () => {
+    // Clear localStorage cache
+    localStorage.removeItem('mechgenz_website_images');
+    localStorage.removeItem('mechgenz_images_cache_expiry');
+    
+    // Trigger a page reload to refresh the frontend cache
+    if (window.confirm('This will clear the image cache and reload the page. Continue?')) {
+      window.location.reload();
+    }
+  };
+
   const getImageUrl = (imageUrl: string): string => {
     // If it's already a full URL, return as is
     if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
@@ -140,6 +176,11 @@ const GalleryManagement = () => {
   };
 
   const handleImageUpload = async (imageId: string, file: File) => {
+    if (!serverConnected) {
+      alert('Server is not connected. Please ensure the backend is running.');
+      return;
+    }
+
     setUploadStatus(prev => ({
       ...prev,
       [imageId]: { uploading: true, success: false, error: null }
@@ -175,6 +216,10 @@ const GalleryManagement = () => {
         // Clear any previous error for this image
         setImageErrors(prev => ({ ...prev, [imageId]: false }));
 
+        // Clear frontend cache to ensure new image is loaded
+        localStorage.removeItem('mechgenz_website_images');
+        localStorage.removeItem('mechgenz_images_cache_expiry');
+
         // Clear success status after 3 seconds
         setTimeout(() => {
           setUploadStatus(prev => ({
@@ -197,6 +242,11 @@ const GalleryManagement = () => {
   };
 
   const handleImageEdit = async (imageId: string) => {
+    if (!serverConnected) {
+      alert('Server is not connected. Please ensure the backend is running.');
+      return;
+    }
+
     try {
       const response = await fetch(`http://localhost:8000/api/website-images/${imageId}`, {
         method: 'PUT',
@@ -234,6 +284,11 @@ const GalleryManagement = () => {
   };
 
   const handleImageReset = async (imageId: string) => {
+    if (!serverConnected) {
+      alert('Server is not connected. Please ensure the backend is running.');
+      return;
+    }
+
     if (!confirm('Are you sure you want to reset this image to default?')) {
       return;
     }
@@ -258,6 +313,10 @@ const GalleryManagement = () => {
 
         // Clear any error for this image
         setImageErrors(prev => ({ ...prev, [imageId]: false }));
+
+        // Clear frontend cache
+        localStorage.removeItem('mechgenz_website_images');
+        localStorage.removeItem('mechgenz_images_cache_expiry');
       } else {
         const result = await response.json();
         alert(`Failed to reset image: ${result.detail}`);
@@ -367,21 +426,52 @@ const GalleryManagement = () => {
         </div>
         <div className="flex space-x-3">
           <button
+            onClick={clearImageCache}
+            className="flex items-center space-x-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors duration-200"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span>Clear Cache</span>
+          </button>
+          <button
             onClick={reinitializeImages}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors duration-200"
+            disabled={!serverConnected}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
           >
             <Settings className="h-4 w-4" />
             <span>Reinitialize</span>
           </button>
           <button
             onClick={refreshImages}
-            disabled={refreshing}
+            disabled={refreshing || !serverConnected}
             className="flex items-center space-x-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
+      </div>
+
+      {/* Server Status */}
+      <div className={`p-4 rounded-lg border ${
+        serverConnected 
+          ? 'bg-green-50 border-green-200 text-green-800' 
+          : 'bg-red-50 border-red-200 text-red-800'
+      }`}>
+        <div className="flex items-center space-x-2">
+          {serverConnected ? (
+            <CheckCircle className="h-5 w-5" />
+          ) : (
+            <AlertCircle className="h-5 w-5" />
+          )}
+          <span className="font-medium">
+            {serverConnected ? 'Backend Server Connected' : 'Backend Server Disconnected'}
+          </span>
+        </div>
+        {!serverConnected && (
+          <p className="mt-2 text-sm">
+            Please ensure the backend server is running on http://localhost:8000 to manage images.
+          </p>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -445,17 +535,6 @@ const GalleryManagement = () => {
         </div>
       </div>
 
-      {/* Debug Information */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-yellow-800 mb-2">Debug Information</h3>
-          <p className="text-xs text-yellow-700">Total images loaded: {Object.keys(images).length}</p>
-          <p className="text-xs text-yellow-700">Categories: {categories.join(', ')}</p>
-          <p className="text-xs text-yellow-700">Filtered images: {filteredImages.length}</p>
-          <p className="text-xs text-yellow-700">API Status: {Object.keys(images).length > 0 ? '✅ Connected' : '❌ No Data'}</p>
-        </div>
-      )}
-
       {/* Connection Status */}
       {Object.keys(images).length === 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -474,7 +553,8 @@ const GalleryManagement = () => {
               <div className="mt-4 space-x-3">
                 <button
                   onClick={reinitializeImages}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                  disabled={!serverConnected}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
                 >
                   Try Reinitialize
                 </button>
@@ -592,7 +672,8 @@ const GalleryManagement = () => {
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleImageEdit(imageId)}
-                          className="flex-1 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
+                          disabled={!serverConnected}
+                          className="flex-1 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-2 disabled:opacity-50"
                         >
                           <Save className="h-4 w-4" />
                           <span>Save</span>
@@ -672,9 +753,13 @@ const GalleryManagement = () => {
                               }
                             }}
                             className="hidden"
-                            disabled={uploadStatus[imageId]?.uploading}
+                            disabled={uploadStatus[imageId]?.uploading || !serverConnected}
                           />
-                          <div className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm">
+                          <div className={`px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm ${
+                            serverConnected 
+                              ? 'bg-orange-500 hover:bg-orange-600 text-white' 
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}>
                             <Upload className="h-4 w-4" />
                             <span>Upload</span>
                           </div>
@@ -682,7 +767,12 @@ const GalleryManagement = () => {
 
                         <button
                           onClick={() => startEditing(imageId)}
-                          className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm"
+                          disabled={!serverConnected}
+                          className={`px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm ${
+                            serverConnected 
+                              ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}
                         >
                           <Edit className="h-4 w-4" />
                           <span>Edit</span>
@@ -690,7 +780,12 @@ const GalleryManagement = () => {
 
                         <button
                           onClick={() => handleImageReset(imageId)}
-                          className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm"
+                          disabled={!serverConnected}
+                          className={`px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm ${
+                            serverConnected 
+                              ? 'bg-gray-500 hover:bg-gray-600 text-white' 
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}
                         >
                           <RotateCcw className="h-4 w-4" />
                           <span>Reset</span>
