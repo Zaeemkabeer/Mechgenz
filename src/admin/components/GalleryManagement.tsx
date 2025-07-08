@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader, MapPin, Tag, Calendar, RefreshCw, Settings, Trash2 } from 'lucide-react';
+import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader, MapPin, Tag, Calendar, RefreshCw, Trash2 } from 'lucide-react';
 
 interface WebsiteImage {
   id: string;
@@ -69,21 +69,12 @@ const GalleryManagement = () => {
         const data = await response.json();
         console.log('✅ Fetched images data:', data);
         setImages(data.images || {});
-        
-        if (Object.keys(data.images || {}).length === 0) {
-          console.warn('⚠️ No images found in response, attempting to reinitialize...');
-          await reinitializeImages();
-        }
       } else {
         console.error('❌ Failed to fetch images:', response.status, response.statusText);
-        // Try to reinitialize if fetch fails
-        await reinitializeImages();
       }
     } catch (error) {
       console.error('❌ Error fetching images:', error);
       setServerConnected(false);
-      // Try to reinitialize on error
-      await reinitializeImages();
     } finally {
       setIsLoading(false);
     }
@@ -102,28 +93,6 @@ const GalleryManagement = () => {
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
-    }
-  };
-
-  const reinitializeImages = async () => {
-    try {
-      console.log('🔄 Attempting to reinitialize images...');
-      const response = await fetch('http://localhost:8000/api/website-images/reinitialize', {
-        method: 'POST'
-      });
-      
-      if (response.ok) {
-        console.log('✅ Images reinitialized successfully');
-        // Fetch images again after reinitializing
-        setTimeout(() => {
-          fetchImages();
-          fetchCategories();
-        }, 1000);
-      } else {
-        console.error('❌ Failed to reinitialize images');
-      }
-    } catch (error) {
-      console.error('❌ Error reinitializing images:', error);
     }
   };
 
@@ -433,14 +402,6 @@ const GalleryManagement = () => {
             <span>Clear Cache</span>
           </button>
           <button
-            onClick={reinitializeImages}
-            disabled={!serverConnected}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
-          >
-            <Settings className="h-4 w-4" />
-            <span>Reinitialize</span>
-          </button>
-          <button
             onClick={refreshImages}
             disabled={refreshing || !serverConnected}
             className="flex items-center space-x-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
@@ -548,16 +509,9 @@ const GalleryManagement = () => {
               <ul className="list-disc list-inside text-red-700 mt-2 space-y-1">
                 <li>Backend server is not running</li>
                 <li>Database connection issues</li>
-                <li>Images not initialized in the database</li>
+                <li>Images not yet uploaded</li>
               </ul>
               <div className="mt-4 space-x-3">
-                <button
-                  onClick={reinitializeImages}
-                  disabled={!serverConnected}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
-                >
-                  Try Reinitialize
-                </button>
                 <button
                   onClick={refreshImages}
                   className="bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded-lg font-medium transition-colors duration-200"

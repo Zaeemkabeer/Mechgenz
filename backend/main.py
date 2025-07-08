@@ -83,7 +83,7 @@ resend.api_key = "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW"
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("public/images", exist_ok=True)
 
-# Comprehensive Website Images Configuration
+# Website Images Configuration - ONLY DEFAULT URLS, NO INITIALIZATION
 WEBSITE_IMAGES_CONFIG = {
     # Branding
     "logo": {
@@ -229,103 +229,10 @@ WEBSITE_IMAGES_CONFIG = {
         "locations": ["Portfolio Section - Special Installation"],
         "recommended_size": "800x600px",
         "category": "portfolio"
-    },
-    
-    # Services Section
-    "services_background": {
-        "name": "Services Section Background",
-        "description": "Background image for services section",
-        "default_url": "https://images.pexels.com/photos/1148820/pexels-photo-1148820.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
-        "locations": ["Services Section"],
-        "recommended_size": "1920x1080px",
-        "category": "services"
-    },
-    
-    # Contact Section
-    "contact_background": {
-        "name": "Contact Section Background",
-        "description": "Background image for contact section",
-        "default_url": "https://images.pexels.com/photos/236705/pexels-photo-236705.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
-        "locations": ["Contact Section"],
-        "recommended_size": "1920x1080px",
-        "category": "contact"
-    },
-    
-    # Team Section
-    "team_member_1": {
-        "name": "Team Member 1",
-        "description": "Profile image for team member",
-        "default_url": "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=1",
-        "locations": ["Team Section"],
-        "recommended_size": "400x400px",
-        "category": "team"
-    },
-    "team_member_2": {
-        "name": "Team Member 2",
-        "description": "Profile image for team member",
-        "default_url": "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=1",
-        "locations": ["Team Section"],
-        "recommended_size": "400x400px",
-        "category": "team"
-    },
-    "team_member_3": {
-        "name": "Team Member 3",
-        "description": "Profile image for team member",
-        "default_url": "https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=1",
-        "locations": ["Team Section"],
-        "recommended_size": "400x400px",
-        "category": "team"
-    },
-    
-    # Testimonials Section
-    "testimonial_bg": {
-        "name": "Testimonials Background",
-        "description": "Background image for testimonials section",
-        "default_url": "https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
-        "locations": ["Testimonials Section"],
-        "recommended_size": "1920x1080px",
-        "category": "testimonials"
     }
 }
 
-# Initialize website images in database
-async def initialize_website_images():
-    if website_images_collection is None:
-        print("⚠️ Skipping website images initialization - database not connected")
-        return
-    
-    try:
-        print(f"🔄 Initializing {len(WEBSITE_IMAGES_CONFIG)} website images...")
-        
-        # Clear existing images and reinitialize to ensure consistency
-        website_images_collection.delete_many({})
-        
-        for image_id, config in WEBSITE_IMAGES_CONFIG.items():
-            image_doc = {
-                "_id": image_id,
-                "name": config["name"],
-                "description": config["description"],
-                "current_url": config["default_url"],
-                "default_url": config["default_url"],
-                "locations": config["locations"],
-                "recommended_size": config["recommended_size"],
-                "category": config["category"],
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc)
-            }
-            website_images_collection.insert_one(image_doc)
-            print(f"✅ Initialized image: {image_id} ({config['name']})")
-        
-        print(f"✅ Successfully initialized {len(WEBSITE_IMAGES_CONFIG)} website images")
-        
-        # Verify initialization
-        count = website_images_collection.count_documents({})
-        print(f"📊 Total images in database: {count}")
-        
-    except Exception as e:
-        print(f"❌ Error initializing website images: {e}")
-
-# Initialize admin user
+# Initialize admin user ONLY
 async def initialize_admin():
     if admin_collection is None:
         print("⚠️ Skipping admin initialization - database not connected")
@@ -355,7 +262,6 @@ async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting MECHGENZ API server...")
     if db is not None:
-        await initialize_website_images()
         await initialize_admin()
         print("✅ Server startup completed successfully")
     else:
@@ -861,7 +767,9 @@ async def update_admin_profile(update_data: AdminUpdate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating profile: {str(e)}")
 
-# Website Images Management Endpoints
+# ===== WEBSITE IMAGES MANAGEMENT ENDPOINTS =====
+# SIMPLIFIED AND CLEAN - NO AUTO-INITIALIZATION
+
 @app.get("/api/website-images")
 async def get_website_images():
     """Get all website images"""
@@ -926,18 +834,23 @@ async def upload_website_image(image_id: str, file: UploadFile = File(...)):
         
         # Update database
         new_url = f"/images/{unique_filename}"
-        result = website_images_collection.update_one(
-            {"_id": image_id},
-            {
-                "$set": {
-                    "current_url": new_url,
-                    "updated_at": datetime.now(timezone.utc)
-                }
-            }
-        )
         
-        if result.matched_count == 0:
-            # Create new document if it doesn't exist
+        # Check if image exists in database
+        existing_image = website_images_collection.find_one({"_id": image_id})
+        
+        if existing_image:
+            # Update existing image
+            result = website_images_collection.update_one(
+                {"_id": image_id},
+                {
+                    "$set": {
+                        "current_url": new_url,
+                        "updated_at": datetime.now(timezone.utc)
+                    }
+                }
+            )
+        else:
+            # Create new image document
             config = WEBSITE_IMAGES_CONFIG[image_id]
             image_doc = {
                 "_id": image_id,
@@ -952,6 +865,8 @@ async def upload_website_image(image_id: str, file: UploadFile = File(...)):
                 "updated_at": datetime.now(timezone.utc)
             }
             website_images_collection.insert_one(image_doc)
+        
+        print(f"✅ Image {image_id} updated with new URL: {new_url}")
         
         return {
             "success": True,
@@ -1028,19 +943,6 @@ async def reset_website_image(image_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error resetting image: {str(e)}")
-
-# Force reinitialize images endpoint (for debugging)
-@app.post("/api/website-images/reinitialize")
-async def reinitialize_website_images():
-    """Force reinitialize all website images (admin only)"""
-    if website_images_collection is None:
-        raise HTTPException(status_code=500, detail="Database connection not available")
-    
-    try:
-        await initialize_website_images()
-        return {"success": True, "message": "Website images reinitialized successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reinitializing images: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
