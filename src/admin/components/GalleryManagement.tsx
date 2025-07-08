@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader, MapPin, Tag, Calendar, RefreshCw, Trash2 } from 'lucide-react';
+import { Image, Upload, Edit, RotateCcw, Save, X, Eye, Filter, Search, AlertCircle, CheckCircle, Loader, MapPin, Tag, Calendar, RefreshCw, Trash2, Trash } from 'lucide-react';
 
 interface WebsiteImage {
   id: string;
@@ -21,6 +21,13 @@ interface ImageUploadStatus {
   };
 }
 
+interface DeleteModalState {
+  isOpen: boolean;
+  imageId: string | null;
+  imageName: string;
+  isDeleting: boolean;
+}
+
 const GalleryManagement = () => {
   const [images, setImages] = useState<{ [key: string]: WebsiteImage }>({});
   const [categories, setCategories] = useState<string[]>([]);
@@ -34,6 +41,12 @@ const GalleryManagement = () => {
   const [imageErrors, setImageErrors] = useState<{ [key: string]: boolean }>({});
   const [refreshing, setRefreshing] = useState(false);
   const [serverConnected, setServerConnected] = useState(false);
+  const [deleteModal, setDeleteModal] = useState<DeleteModalState>({
+    isOpen: false,
+    imageId: null,
+    imageName: '',
+    isDeleting: false
+  });
 
   useEffect(() => {
     fetchImages();
@@ -293,6 +306,84 @@ const GalleryManagement = () => {
     } catch (error) {
       console.error('Error resetting image:', error);
       alert('Error resetting image');
+    }
+  };
+
+  const openDeleteModal = (imageId: string, imageName: string) => {
+    setDeleteModal({
+      isOpen: true,
+      imageId,
+      imageName,
+      isDeleting: false
+    });
+  };
+
+  const closeDeleteModal = () => {
+    if (deleteModal.isDeleting) return; // Prevent closing while deleting
+    
+    setDeleteModal({
+      isOpen: false,
+      imageId: null,
+      imageName: '',
+      isDeleting: false
+    });
+  };
+
+  const handleDeleteImage = async (deleteType: 'image_only' | 'complete') => {
+    if (!deleteModal.imageId || !serverConnected) {
+      alert('Server is not connected. Please ensure the backend is running.');
+      return;
+    }
+
+    setDeleteModal(prev => ({ ...prev, isDeleting: true }));
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/website-images/${deleteModal.imageId}?delete_type=${deleteType}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        if (deleteType === 'image_only') {
+          // Update local state with default URL
+          setImages(prev => ({
+            ...prev,
+            [deleteModal.imageId!]: {
+              ...prev[deleteModal.imageId!],
+              current_url: result.default_url,
+              updated_at: new Date().toISOString()
+            }
+          }));
+          
+          // Clear any error for this image
+          setImageErrors(prev => ({ ...prev, [deleteModal.imageId!]: false }));
+          
+          alert('Custom image deleted successfully. Image has been reset to default.');
+        } else {
+          // Remove from local state completely
+          setImages(prev => {
+            const updated = { ...prev };
+            delete updated[deleteModal.imageId!];
+            return updated;
+          });
+          
+          alert('Image configuration deleted completely. This image will no longer appear on the website.');
+        }
+        
+        // Clear frontend cache
+        localStorage.removeItem('mechgenz_website_images');
+        localStorage.removeItem('mechgenz_images_cache_expiry');
+        
+        closeDeleteModal();
+      } else {
+        alert(`Failed to delete image: ${result.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      alert('Error deleting image. Please try again.');
+    } finally {
+      setDeleteModal(prev => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -695,7 +786,7 @@ const GalleryManagement = () => {
                       )}
 
                       {/* Action Buttons */}
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-4 gap-2">
                         <label className="cursor-pointer">
                           <input
                             type="file"
@@ -744,6 +835,19 @@ const GalleryManagement = () => {
                           <RotateCcw className="h-4 w-4" />
                           <span>Reset</span>
                         </button>
+
+                        <button
+                          onClick={() => openDeleteModal(imageId, image.name)}
+                          disabled={!serverConnected}
+                          className={`px-3 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center space-x-1 text-sm ${
+                            serverConnected 
+                              ? 'bg-red-500 hover:bg-red-600 text-white' 
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          <Trash className="h-4 w-4" />
+                          <span>Delete</span>
+                        </button>
                       </div>
                     </div>
                   )}
@@ -760,6 +864,118 @@ const GalleryManagement = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                    <Trash className="h-5 w-5 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Delete Image</h3>
+                    <p className="text-sm text-gray-600">{deleteModal.imageName}</p>
+                  </div>
+                </div>
+                {!deleteModal.isDeleting && (
+                  <button
+                    onClick={closeDeleteModal}
+                    className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-gray-700 mb-6">
+                Choose how you want to delete this image:
+              </p>
+              
+              <div className="space-y-4">
+                {/* Option 1: Delete Image Only */}
+                <div className="border border-gray-200 rounded-lg p-4 hover:border-orange-300 transition-colors duration-200">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center mt-0.5">
+                      <RotateCcw className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 mb-1">Delete Custom Image Only</h4>
+                      <p className="text-sm text-gray-600 mb-3">
+                        Removes the custom uploaded image and resets to the default image. The image slot remains available for future uploads.
+                      </p>
+                      <button
+                        onClick={() => handleDeleteImage('image_only')}
+                        disabled={deleteModal.isDeleting}
+                        className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                      >
+                        {deleteModal.isDeleting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            <span>Deleting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="h-4 w-4" />
+                            <span>Reset to Default</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Option 2: Delete Everything */}
+                <div className="border border-red-200 rounded-lg p-4 hover:border-red-300 transition-colors duration-200">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center mt-0.5">
+                      <Trash className="h-4 w-4 text-red-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 mb-1">Delete Completely</h4>
+                      <p className="text-sm text-gray-600 mb-3">
+                        <strong className="text-red-600">Warning:</strong> Permanently removes the entire image configuration. This image will no longer appear anywhere on the website and cannot be recovered.
+                      </p>
+                      <button
+                        onClick={() => handleDeleteImage('complete')}
+                        disabled={deleteModal.isDeleting}
+                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                      >
+                        {deleteModal.isDeleting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            <span>Deleting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Trash className="h-4 w-4" />
+                            <span>Delete Permanently</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {!deleteModal.isDeleting && (
+              <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                <button
+                  onClick={closeDeleteModal}
+                  className="w-full bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Image Preview Modal */}

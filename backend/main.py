@@ -288,7 +288,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000", "https://mechgenz.com"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -944,6 +944,113 @@ async def reset_website_image(image_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error resetting image: {str(e)}")
 
+@app.delete("/api/website-images/{image_id}")
+async def delete_website_image(image_id: str, delete_type: str = "image_only"):
+    """Delete website image with two options: image_only or complete"""
+    if website_images_collection is None:
+        raise HTTPException(status_code=500, detail="Database connection not available")
+    
+    try:
+        # Validate delete_type parameter
+        if delete_type not in ["image_only", "complete"]:
+            raise HTTPException(status_code=400, detail="Invalid delete_type. Must be 'image_only' or 'complete'")
+        
+        # Check if image exists in database
+        existing_image = website_images_collection.find_one({"_id": image_id})
+        
+        if delete_type == "image_only":
+            # Option 1: Delete only the custom image, reset to default
+            if image_id not in WEBSITE_IMAGES_CONFIG:
+                raise HTTPException(status_code=404, detail="Image configuration not found")
+            
+            default_url = WEBSITE_IMAGES_CONFIG[image_id]["default_url"]
+            
+            if existing_image:
+                # If custom image exists, delete the physical file if it's a local upload
+                current_url = existing_image.get("current_url", "")
+                if current_url.startswith("/images/"):
+                    # Extract filename and delete physical file
+                    filename = current_url.replace("/images/", "")
+                    file_path = os.path.join("public/images", filename)
+                    if os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                            print(f"🗑️ Deleted physical file: {file_path}")
+                        except Exception as e:
+                            print(f"⚠️ Warning: Could not delete physical file {file_path}: {e}")
+                
+                # Reset to default URL in database
+                result = website_images_collection.update_one(
+                    {"_id": image_id},
+                    {
+                        "$set": {
+                            "current_url": default_url,
+                            "updated_at": datetime.now(timezone.utc)
+                        }
+                    }
+                )
+            else:
+                # Create new document with default URL
+                config = WEBSITE_IMAGES_CONFIG[image_id]
+                image_doc = {
+                    "_id": image_id,
+                    "name": config["name"],
+                    "description": config["description"],
+                    "current_url": default_url,
+                    "default_url": config["default_url"],
+                    "locations": config["locations"],
+                    "recommended_size": config["recommended_size"],
+                    "category": config["category"],
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc)
+                }
+                website_images_collection.insert_one(image_doc)
+            
+            return {
+                "success": True,
+                "message": "Custom image deleted and reset to default",
+                "action": "image_only",
+                "default_url": default_url
+            }
+        
+        elif delete_type == "complete":
+            # Option 2: Delete everything - remove from database and physical file
+            if existing_image:
+                # Delete physical file if it's a local upload
+                current_url = existing_image.get("current_url", "")
+                if current_url.startswith("/images/"):
+                    filename = current_url.replace("/images/", "")
+                    file_path = os.path.join("public/images", filename)
+                    if os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                            print(f"🗑️ Deleted physical file: {file_path}")
+                        except Exception as e:
+                            print(f"⚠️ Warning: Could not delete physical file {file_path}: {e}")
+                
+                # Remove from database completely
+                result = website_images_collection.delete_one({"_id": image_id})
+                
+                if result.deleted_count > 0:
+                    return {
+                        "success": True,
+                        "message": "Image configuration deleted completely",
+                        "action": "complete"
+                    }
+                else:
+                    raise HTTPException(status_code=404, detail="Image not found in database")
+            else:
+                # Image doesn't exist in database
+                return {
+                    "success": True,
+                    "message": "Image configuration was already deleted",
+                    "action": "complete"
+                }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting image: {str(e)}")
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting MECHGENZ API server...")
