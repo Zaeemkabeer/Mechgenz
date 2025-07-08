@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import base64
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
@@ -426,6 +427,21 @@ async def submit_contact_form(
         # Insert into database
         result = contact_collection.insert_one(submission)
         
+        # Send admin notification email
+        try:
+            await send_admin_notification(submission, uploaded_files)
+            print("✅ Admin notification email sent successfully")
+        except Exception as email_error:
+            print(f"❌ Failed to send admin notification email: {email_error}")
+            # Don't fail the form submission if email fails
+        
+        # Send email notification to admin
+        try:
+            await send_admin_notification(submission, uploaded_files)
+        except Exception as email_error:
+            # Log the error but don't fail the form submission
+            print(f"⚠️ Failed to send admin notification email: {email_error}")
+        
         return {
             "success": True,
             "message": "Contact form submitted successfully",
@@ -434,7 +450,383 @@ async def submit_contact_form(
         }
         
     except Exception as e:
+        print(f"❌ Error in contact form submission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error submitting form: {str(e)}")
+
+async def send_admin_notification(submission: dict, uploaded_files: list):
+    """Send email notification to admin when a new contact form is submitted"""
+    try:
+        print(f"📧 Preparing admin notification email for submission from {submission.get('name', 'Unknown')}")
+        
+        # Prepare file attachments
+        attachments = []
+        file_info_html = ""
+        
+        if uploaded_files:
+            print(f"📎 Processing {len(uploaded_files)} file attachments")
+            file_info_html = "<h3 style='color: #ff5722; margin-top: 20px;'>📎 Attached Files:</h3><ul style='margin: 10px 0; padding-left: 20px;'>"
+            
+            for file_info in uploaded_files:
+                try:
+                    file_path = os.path.join("uploads", file_info["saved_name"])
+                    if os.path.exists(file_path):
+                        # Read file and encode as base64
+                        with open(file_path, "rb") as f:
+                            file_content = f.read()
+                            file_base64 = base64.b64encode(file_content).decode()
+                        
+                        # Add to attachments
+                        attachments.append({
+                            "filename": file_info["original_name"],
+                            "content": file_base64,
+                            "type": file_info.get("content_type", "application/octet-stream")
+                        })
+                        
+                        # Add to HTML info
+                        file_size_mb = file_info["file_size"] / (1024 * 1024)
+                        file_info_html += f"<li><strong>{file_info['original_name']}</strong> ({file_size_mb:.2f} MB)</li>"
+                        print(f"✅ Attached file: {file_info['original_name']}")
+                    else:
+                        print(f"⚠️ File not found: {file_path}")
+                        file_info_html += f"<li><strong>{file_info['original_name']}</strong> (File not found)</li>"
+                except Exception as file_error:
+                    print(f"❌ Error processing file {file_info.get('original_name', 'unknown')}: {file_error}")
+                    file_info_html += f"<li><strong>{file_info.get('original_name', 'Unknown file')}</strong> (Error processing file)</li>"
+            
+            file_info_html += "</ul>"
+        else:
+            file_info_html = "<p style='color: #666; font-style: italic;'>No files attached</p>"
+        
+        # Format submission time
+        submitted_at = submission.get('submitted_at', datetime.now(timezone.utc))
+        if isinstance(submitted_at, str):
+            submitted_at = datetime.fromisoformat(submitted_at.replace('Z', '+00:00'))
+        formatted_time = submitted_at.strftime("%B %d, %Y at %I:%M %p UTC")
+        
+        # Create HTML email content
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>New Contact Form Submission - MECHGENZ</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f5f5f5;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+                <!-- Header -->
+                <div style="background: linear-gradient(135deg, #ff5722 0%, #ff7043 100%); padding: 30px 20px; text-align: center;">
+                    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">🔔 NEW INQUIRY</h1>
+                    <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 16px; letter-spacing: 1px;">MECHGENZ CONTACT FORM</p>
+                </div>
+                
+                <!-- Content -->
+                <div style="padding: 30px;">
+                    <div style="background-color: #f8f9fa; padding: 20px; border-left: 4px solid #ff5722; margin-bottom: 25px;">
+                        <h2 style="color: #ff5722; margin-top: 0; margin-bottom: 15px;">📋 Contact Information</h2>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 8px 0; font-weight: bold; color: #555; width: 100px;">👤 Name:</td>
+                                <td style="padding: 8px 0; color: #333;">{submission.get('name', 'Not provided')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-weight: bold; color: #555;">📧 Email:</td>
+                                <td style="padding: 8px 0; color: #333;"><a href="mailto:{submission.get('email', '')}" style="color: #ff5722; text-decoration: none;">{submission.get('email', 'Not provided')}</a></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-weight: bold; color: #555;">📞 Phone:</td>
+                                <td style="padding: 8px 0; color: #333;">{submission.get('phone', 'Not provided')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-weight: bold; color: #555;">🕒 Time:</td>
+                                <td style="padding: 8px 0; color: #333;">{formatted_time}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    
+                    <div style="background-color: #fff; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 25px;">
+                        <h3 style="color: #ff5722; margin-top: 0; margin-bottom: 15px;">💬 Message</h3>
+                        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 3px solid #ff5722;">
+                            <p style="margin: 0; white-space: pre-line; color: #333; line-height: 1.6;">{submission.get('message', 'No message provided')}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- File Attachments -->
+                    <div style="background-color: #fff; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 25px;">
+                        {file_info_html}
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="http://localhost:5173/admin/user-inquiries" 
+                           style="display: inline-block; background-color: #ff5722; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 0 10px;">
+                            🖥️ View in Admin Panel
+                        </a>
+                        <a href="mailto:{submission.get('email', '')}?subject=Re: Your inquiry to MECHGENZ" 
+                           style="display: inline-block; background-color: #2c3e50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 0 10px;">
+                            ↩️ Reply Directly
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div style="background-color: #2c3e50; color: white; padding: 20px; text-align: center;">
+                    <p style="margin: 0; font-size: 14px;">
+                        This is an automated notification from your MECHGENZ website contact form.
+                    </p>
+                    <p style="margin: 5px 0 0 0; font-size: 12px; color: #bdc3c7;">
+                        © 2024 MECHGENZ W.L.L. All Rights Reserved.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Plain text version
+        text_content = f"""
+        🔔 NEW CONTACT FORM SUBMISSION - MECHGENZ
+        
+        📋 CONTACT INFORMATION:
+        👤 Name: {submission.get('name', 'Not provided')}
+        📧 Email: {submission.get('email', 'Not provided')}
+        📞 Phone: {submission.get('phone', 'Not provided')}
+        🕒 Submitted: {formatted_time}
+        
+        💬 MESSAGE:
+        {submission.get('message', 'No message provided')}
+        
+        📎 ATTACHMENTS: {len(uploaded_files)} file(s) attached
+        
+        🖥️ View in Admin Panel: http://localhost:5173/admin/user-inquiries
+        ↩️ Reply directly to: {submission.get('email', '')}
+        
+        ---
+        This is an automated notification from your MECHGENZ website contact form.
+        """
+        
+        # Prepare email data
+        email_data = {
+            "from": "MECHGENZ Contact Form <mechgenz4@gmail.com>",
+            "to": ["mechgenz4@gmail.com"],
+            "reply_to": [submission.get('email', 'noreply@mechgenz.com')],
+            "subject": f"🔔 New Contact Form Submission from {submission.get('name', 'Unknown User')}",
+            "html": html_content,
+            "text": text_content
+        }
+        
+        # Add attachments if any
+        if attachments:
+            email_data["attachments"] = attachments
+            print(f"📎 Adding {len(attachments)} attachments to email")
+        
+        print(f"📤 Sending admin notification email to mechgenz4@gmail.com...")
+        print(f"📧 Subject: {email_data['subject']}")
+        print(f"📎 Attachments: {len(attachments)} files")
+        
+        # Send email using Resend
+        email_response = resend.Emails.send(email_data)
+        
+        print(f"✅ Admin notification email sent successfully!")
+        print(f"📧 Email ID: {email_response.get('id', 'Unknown')}")
+        
+        return {
+            "success": True,
+            "message": "Admin notification sent successfully",
+            "email_id": email_response.get("id"),
+            "attachments_count": len(attachments)
+        }
+        
+    except Exception as e:
+        print(f"❌ Error sending admin notification email: {str(e)}")
+        print(f"📧 Error details: {type(e).__name__}: {e}")
+        raise e
+
+# Add missing import
+import base64
+
+async def send_admin_notification(submission: dict, uploaded_files: List[dict]):
+    """Send email notification to admin when a new contact form is submitted"""
+    try:
+        # Prepare file attachments for email
+        email_attachments = []
+        
+        for file_info in uploaded_files:
+            try:
+                file_path = os.path.join("uploads", file_info["saved_name"])
+                if os.path.exists(file_path):
+                    # Read file content and encode as base64
+                    with open(file_path, "rb") as f:
+                        file_content = f.read()
+                        file_base64 = base64.b64encode(file_content).decode('utf-8')
+                    
+                    # Add attachment to email
+                    email_attachments.append({
+                        "filename": file_info["original_name"],
+                        "content": file_base64,
+                        "content_type": file_info["content_type"] or "application/octet-stream"
+                    })
+            except Exception as file_error:
+                print(f"⚠️ Error processing file {file_info['original_name']}: {file_error}")
+                continue
+        
+        # Create HTML email content for admin notification
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>New Contact Form Submission - MECHGENZ</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f5f5f5;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+                <!-- Header -->
+                <div style="background: linear-gradient(135deg, #ff5722 0%, #ff7043 100%); padding: 30px 20px; text-align: center;">
+                    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">MECHGENZ</h1>
+                    <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px; letter-spacing: 2px;">TRADING CONTRACTING AND SERVICES</p>
+                </div>
+                
+                <!-- Content -->
+                <div style="padding: 40px 30px;">
+                    <div style="background-color: #fff3e0; border-left: 4px solid #ff5722; padding: 20px; margin-bottom: 30px;">
+                        <h2 style="color: #ff5722; margin-top: 0; font-size: 24px;">🔔 New Contact Form Submission</h2>
+                        <p style="margin-bottom: 0; color: #666;">You have received a new inquiry through the website contact form.</p>
+                    </div>
+                    
+                    <!-- Contact Details -->
+                    <div style="background-color: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
+                        <h3 style="color: #ff5722; margin-top: 0; margin-bottom: 20px; font-size: 18px;">📋 Contact Information</h3>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333; display: inline-block; width: 80px;">Name:</strong>
+                            <span style="color: #666;">{submission.get('name', 'Not provided')}</span>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333; display: inline-block; width: 80px;">Email:</strong>
+                            <span style="color: #666;">{submission.get('email', 'Not provided')}</span>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333; display: inline-block; width: 80px;">Phone:</strong>
+                            <span style="color: #666;">{submission.get('phone', 'Not provided')}</span>
+                        </div>
+                        
+                        <div style="margin-bottom: 0;">
+                            <strong style="color: #333; display: inline-block; width: 80px;">Submitted:</strong>
+                            <span style="color: #666;">{submission.get('submitted_at', datetime.now(timezone.utc)).strftime('%B %d, %Y at %I:%M %p UTC') if isinstance(submission.get('submitted_at'), datetime) else submission.get('submitted_at', 'Unknown')}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Message -->
+                    <div style="background-color: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
+                        <h3 style="color: #ff5722; margin-top: 0; margin-bottom: 15px; font-size: 18px;">💬 Message</h3>
+                        <div style="background-color: white; padding: 20px; border-radius: 6px; border: 1px solid #e0e0e0;">
+                            <p style="margin: 0; color: #333; white-space: pre-line; line-height: 1.6;">{submission.get('message', 'No message provided')}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Attachments Info -->
+                    {f'''
+                    <div style="background-color: #e8f5e8; padding: 25px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #c8e6c9;">
+                        <h3 style="color: #2e7d32; margin-top: 0; margin-bottom: 15px; font-size: 18px;">📎 Attachments ({len(uploaded_files)})</h3>
+                        <p style="margin: 0; color: #2e7d32; font-size: 14px;">
+                            The following files have been attached to this inquiry and are included with this email:
+                        </p>
+                        <ul style="margin: 10px 0 0 0; padding-left: 20px; color: #2e7d32;">
+                            {chr(10).join([f'<li style="margin-bottom: 5px;"><strong>{file_info["original_name"]}</strong> ({file_info.get("file_size", 0) // 1024} KB)</li>' for file_info in uploaded_files])}
+                        </ul>
+                    </div>
+                    ''' if uploaded_files else '''
+                    <div style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; margin-bottom: 25px; text-align: center;">
+                        <p style="margin: 0; color: #666; font-style: italic;">No files were attached to this inquiry.</p>
+                    </div>
+                    '''}
+                    
+                    <!-- Action Buttons -->
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="http://localhost:5173/admin/user-inquiries" 
+                           style="background-color: #ff5722; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin-right: 15px;">
+                            View in Admin Panel
+                        </a>
+                        <a href="mailto:{submission.get('email', '')}?subject=Re: Your inquiry to MECHGENZ" 
+                           style="background-color: #2196F3; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            Reply Directly
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div style="background-color: #2c3e50; color: white; padding: 25px 20px; text-align: center;">
+                    <p style="margin: 0; font-size: 14px; color: #bdc3c7;">
+                        This is an automated notification from your MECHGENZ website contact form.
+                    </p>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #95a5a6;">
+                        © 2024 MECHGENZ W.L.L. All Rights Reserved.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Plain text version for email clients that don't support HTML
+        text_content = f"""
+        NEW CONTACT FORM SUBMISSION - MECHGENZ
+        =====================================
+        
+        You have received a new inquiry through the website contact form.
+        
+        CONTACT INFORMATION:
+        Name: {submission.get('name', 'Not provided')}
+        Email: {submission.get('email', 'Not provided')}
+        Phone: {submission.get('phone', 'Not provided')}
+        Submitted: {submission.get('submitted_at', datetime.now(timezone.utc)).strftime('%B %d, %Y at %I:%M %p UTC') if isinstance(submission.get('submitted_at'), datetime) else submission.get('submitted_at', 'Unknown')}
+        
+        MESSAGE:
+        {submission.get('message', 'No message provided')}
+        
+        ATTACHMENTS:
+        {f"{len(uploaded_files)} file(s) attached" if uploaded_files else "No files attached"}
+        {chr(10).join([f"- {file_info['original_name']} ({file_info.get('file_size', 0) // 1024} KB)" for file_info in uploaded_files]) if uploaded_files else ""}
+        
+        ACTIONS:
+        - View in Admin Panel: http://localhost:5173/admin/user-inquiries
+        - Reply directly to: {submission.get('email', '')}
+        
+        ---
+        This is an automated notification from your MECHGENZ website contact form.
+        """
+        
+        # Prepare email data
+        email_data = {
+            "from": "noreply@resend.dev",  # Use Resend's default verified domain
+            "to": "mechgenz4@gmail.com",
+            "reply_to": submission.get('email', 'noreply@mechgenz.com'),
+            "subject": f"🔔 New Contact Form Submission from {submission.get('name', 'Unknown')}",
+            "html": html_content,
+            "text": text_content
+        }
+        
+        # Add attachments if any
+        if email_attachments:
+            email_data["attachments"] = email_attachments
+        
+        # Send email using Resend
+        email_response = resend.Emails.send(email_data)
+        
+        print(f"✅ Admin notification email sent successfully. Email ID: {email_response.get('id', 'Unknown')}")
+        
+        return {
+            "success": True,
+            "message": "Admin notification sent successfully",
+            "email_id": email_response.get("id")
+        }
+        
+    except Exception as e:
+        print(f"❌ Error sending admin notification email: {str(e)}")
+        raise e
 
 @app.get("/api/submissions")
 async def get_submissions(limit: int = 50, skip: int = 0):
@@ -495,6 +887,44 @@ async def update_submission_status(submission_id: str, status_update: StatusUpda
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating status: {str(e)}")
+
+@app.delete("/api/submissions/{submission_id}")
+async def delete_submission(submission_id: str):
+    """Delete a contact form submission"""
+    if contact_collection is None:
+        raise HTTPException(status_code=500, detail="Database connection not available")
+    
+    try:
+        from bson import ObjectId
+        
+        # Get the submission first to check for uploaded files
+        submission = contact_collection.find_one({"_id": ObjectId(submission_id)})
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+        
+        # Delete uploaded files if they exist
+        if submission.get('uploaded_files'):
+            for file_info in submission['uploaded_files']:
+                file_path = os.path.join("uploads", file_info['saved_name'])
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"🗑️ Deleted file: {file_path}")
+                    except Exception as e:
+                        print(f"⚠️ Warning: Could not delete file {file_path}: {e}")
+        
+        # Delete the submission from database
+        result = contact_collection.delete_one({"_id": ObjectId(submission_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Submission not found")
+        
+        return {"success": True, "message": "Submission deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting submission: {str(e)}")
 
 @app.get("/api/submissions/{submission_id}/file/{filename}")
 async def download_file(submission_id: str, filename: str):
@@ -648,8 +1078,9 @@ async def send_reply(reply_data: EmailReply):
         
         # Send email using Resend
         email_response = resend.Emails.send({
-            "from": "mechgenz4@gmail.com",
-            "to": reply_data.to_email,
+            "from": "noreply@resend.dev",  # Use Resend's default domain
+            "reply_to": user_email,  # Admin can reply directly to the user
+            "reply_to": "mechgenz4@gmail.com",  # User can reply to admin
             "subject": "Reply from MECHGENZ - Your Inquiry",
             "html": html_content,
             "text": text_content

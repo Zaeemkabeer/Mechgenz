@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Phone, Calendar, Reply, Eye, Search, Filter, Send, X, CheckCircle, Clock, Download, FileText, Image as ImageIcon, Paperclip } from 'lucide-react';
+import { Mail, Phone, Calendar, Reply, Eye, Search, Filter, Send, X, CheckCircle, Clock, Download, FileText, Image as ImageIcon, Paperclip, Trash2, Check, Square } from 'lucide-react';
 
 interface UploadedFile {
   original_name: string;
@@ -29,6 +29,9 @@ const UserInquiries = () => {
   const [replyMessage, setReplyMessage] = useState('');
   const [isReplying, setIsReplying] = useState(false);
   const [replySuccess, setReplySuccess] = useState(false);
+  const [selectedInquiries, setSelectedInquiries] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     fetchInquiries();
@@ -104,6 +107,66 @@ const UserInquiries = () => {
       alert('Error sending reply. Please try again.');
     } finally {
       setIsReplying(false);
+    }
+  };
+
+  const toggleSelectInquiry = (inquiryId: string) => {
+    setSelectedInquiries(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(inquiryId)) {
+        newSet.delete(inquiryId);
+      } else {
+        newSet.add(inquiryId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllInquiries = () => {
+    if (selectedInquiries.size === filteredInquiries.length) {
+      setSelectedInquiries(new Set());
+    } else {
+      setSelectedInquiries(new Set(filteredInquiries.map(inquiry => inquiry._id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedInquiries.size === 0) return;
+
+    setIsDeleting(true);
+    try {
+      const deletePromises = Array.from(selectedInquiries).map(async (inquiryId) => {
+        const response = await fetch(`http://localhost:8000/api/submissions/${inquiryId}`, {
+          method: 'DELETE'
+        });
+        return response.ok;
+      });
+
+      const results = await Promise.all(deletePromises);
+      const successCount = results.filter(Boolean).length;
+
+      if (successCount > 0) {
+        // Refresh inquiries list
+        await fetchInquiries();
+        
+        // Clear selections
+        setSelectedInquiries(new Set());
+        
+        // Clear selected inquiry if it was deleted
+        if (selectedInquiry && selectedInquiries.has(selectedInquiry._id)) {
+          setSelectedInquiry(null);
+        }
+        
+        alert(`Successfully deleted ${successCount} inquir${successCount === 1 ? 'y' : 'ies'}`);
+      } else {
+        alert('Failed to delete inquiries. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error deleting inquiries:', error);
+      alert('Error deleting inquiries. Please try again.');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -204,9 +267,48 @@ const UserInquiries = () => {
         {/* Inquiries List */}
         <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900">
-              Inquiries ({filteredInquiries.length})
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">
+                Inquiries ({filteredInquiries.length})
+              </h2>
+              
+              {/* Selection Controls */}
+              {filteredInquiries.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={selectAllInquiries}
+                    className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200"
+                    title={selectedInquiries.size === filteredInquiries.length ? 'Deselect All' : 'Select All'}
+                  >
+                    {selectedInquiries.size === filteredInquiries.length ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Square className="h-4 w-4" />
+                    )}
+                    <span>All</span>
+                  </button>
+                  
+                  {selectedInquiries.size > 0 && (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={isDeleting}
+                      className="flex items-center space-x-1 text-sm text-red-600 hover:text-red-700 transition-colors duration-200 disabled:opacity-50"
+                      title={`Delete ${selectedInquiries.size} selected`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span>({selectedInquiries.size})</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Selection Info */}
+            {selectedInquiries.size > 0 && (
+              <div className="mt-3 text-sm text-gray-600">
+                {selectedInquiries.size} of {filteredInquiries.length} selected
+              </div>
+            )}
           </div>
           
           <div className="max-h-96 overflow-y-auto">
@@ -214,16 +316,40 @@ const UserInquiries = () => {
               filteredInquiries.map((inquiry) => (
                 <div
                   key={inquiry._id}
-                  onClick={() => setSelectedInquiry(inquiry)}
-                  className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors duration-200 ${
+                  className={`p-4 border-b border-gray-100 transition-colors duration-200 ${
                     selectedInquiry?._id === inquiry._id ? 'bg-orange-50 border-orange-200' : ''
+                  } ${
+                    selectedInquiries.has(inquiry._id) ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-start space-x-3">
+                    {/* Checkbox */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelectInquiry(inquiry._id);
+                      }}
+                      className="mt-1 flex-shrink-0"
+                    >
+                      <div className={`w-4 h-4 border-2 rounded flex items-center justify-center transition-colors duration-200 ${
+                        selectedInquiries.has(inquiry._id)
+                          ? 'bg-blue-500 border-blue-500 text-white'
+                          : 'border-gray-300 hover:border-blue-400'
+                      }`}>
+                        {selectedInquiries.has(inquiry._id) && (
+                          <Check className="h-3 w-3" />
+                        )}
+                      </div>
+                    </button>
+                    
+                    {/* Inquiry Content */}
                     <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-semibold">
                       {inquiry.name.charAt(0)}
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div 
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => setSelectedInquiry(inquiry)}
+                    >
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-gray-900 truncate">
                           {inquiry.name}
@@ -492,6 +618,61 @@ const UserInquiries = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Delete Inquiries</h3>
+                  <p className="text-sm text-gray-600">
+                    {selectedInquiries.size} inquir{selectedInquiries.size === 1 ? 'y' : 'ies'} selected
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-gray-700 mb-6">
+                Are you sure you want to delete the selected inquir{selectedInquiries.size === 1 ? 'y' : 'ies'}? 
+                This action cannot be undone.
+              </p>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeleting}
+                  className="px-4 py-2 text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      <span>Delete {selectedInquiries.size === 1 ? 'Inquiry' : 'Inquiries'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
