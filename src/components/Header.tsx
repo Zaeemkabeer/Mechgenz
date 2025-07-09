@@ -66,6 +66,28 @@ const Header = () => {
     setShowAboutDropdown(false);
   };
 
+  const toggleAboutDropdown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowAboutDropdown(!showAboutDropdown);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showAboutDropdown) {
+        setShowAboutDropdown(false);
+      }
+    };
+
+    if (showAboutDropdown) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showAboutDropdown]);
   const isOnMainPage = location.pathname === '/';
 
   return (
@@ -80,7 +102,7 @@ const Header = () => {
         <div className="flex justify-between items-center py-3">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-4">
-            <div className="h-12 w-12 rounded-lg shadow-sm overflow-hidden bg-gray-200">
+            <div className="h-12 w-12 shadow-sm overflow-hidden bg-gray-200">
               {logoLoaded ? (
                 <img
                   src={logoUrl}
@@ -101,7 +123,7 @@ const Header = () => {
                 MECHGENZ
               </span>
               <span 
-                className={`text-xs font-medium tracking-widest transition-colors duration-300 ${
+                className={`text-xs font-normal tracking-wide transition-colors duration-300 ${
                   isScrolled ? 'text-gray-600' : 'text-white/80'
                 }`}
               >
@@ -117,29 +139,36 @@ const Header = () => {
                 {item.hasDropdown ? (
                   <div
                     className="relative"
-                    onMouseEnter={() => setShowAboutDropdown(true)}
-                    onMouseLeave={() => setShowAboutDropdown(false)}
                   >
-                    {isOnMainPage ? (
-                      <a
-                        href={item.href}
-                        className={`text-sm font-medium transition-colors duration-300 hover:text-orange-500 flex items-center space-x-1 ${
-                          isScrolled ? 'text-gray-700' : 'text-white'
-                        }`}
-                      >
-                        <span>{item.label}</span>
-                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAboutDropdown ? 'rotate-180' : ''}`} />
-                      </a>
-                    ) : (
+                    <div className="flex items-center">
+                      {isOnMainPage ? (
+                        <a
+                          href={item.href}
+                          className={`text-sm font-medium transition-colors duration-300 hover:text-orange-500 ${
+                            isScrolled ? 'text-gray-700' : 'text-white'
+                          }`}
+                        >
+                          {item.label}
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => window.location.href = '/'}
+                          className={`text-sm font-medium transition-colors duration-300 hover:text-orange-500 ${
+                            isScrolled ? 'text-gray-700' : 'text-white'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      )}
                       <button
-                        className={`text-sm font-medium transition-colors duration-300 hover:text-orange-500 flex items-center space-x-1 ${
+                        onClick={toggleAboutDropdown}
+                        className={`ml-1 p-1 transition-colors duration-300 hover:text-orange-500 ${
                           isScrolled ? 'text-gray-700' : 'text-white'
                         }`}
                       >
-                        <span>{item.label}</span>
                         <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAboutDropdown ? 'rotate-180' : ''}`} />
                       </button>
-                    )}
+                    </div>
                     
                     {/* Dropdown Menu */}
                     {showAboutDropdown && (
@@ -213,13 +242,25 @@ const Header = () => {
                 <div key={index}>
                   {item.hasDropdown ? (
                     <div>
-                      <button
-                        onClick={() => setShowAboutDropdown(!showAboutDropdown)}
-                        className="w-full text-left text-gray-700 font-medium py-2 px-3 rounded-md hover:bg-orange-500 hover:text-white transition-colors duration-200 flex items-center justify-between"
-                      >
-                        <span>{item.label}</span>
-                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAboutDropdown ? 'rotate-180' : ''}`} />
-                      </button>
+                      <div className="flex items-center">
+                        <button
+                          onClick={() => {
+                            if (!isOnMainPage) {
+                              window.location.href = '/';
+                            }
+                            handleNavClick(item.href);
+                          }}
+                          className="flex-1 text-left text-gray-700 font-medium py-2 px-3 rounded-md hover:bg-orange-500 hover:text-white transition-colors duration-200"
+                        >
+                          {item.label}
+                        </button>
+                        <button
+                          onClick={toggleAboutDropdown}
+                          className="text-gray-700 font-medium py-2 px-3 rounded-md hover:bg-orange-500 hover:text-white transition-colors duration-200"
+                        >
+                          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAboutDropdown ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
                       {showAboutDropdown && (
                         <div className="ml-4 mt-2 space-y-2">
                           {item.dropdownItems?.map((dropdownItem, dropdownIndex) => (

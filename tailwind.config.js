@@ -5,7 +5,8 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
-        'mechgenz': ['Inter', 'system-ui', 'sans-serif'], // Using Inter as it closely matches the MECHGENZ font style
+        'mechgenz': ['Unione Force', 'Inter', 'system-ui', 'sans-serif'], // Custom font with fallbacks
+        'unione-force': ['Unione Force', 'Arial Black', 'sans-serif'], // Dedicated class for the custom font
       },
       colors: {
         orange: {

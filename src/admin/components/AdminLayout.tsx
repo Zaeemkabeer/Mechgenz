@@ -52,10 +52,20 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, onLogout }) => {
             </div>
             <div className="flex flex-col">
               <span className="text-lg font-bold text-white tracking-wider">
+              <span 
+                className="text-lg font-bold text-white tracking-wider"
+                style={{ fontFamily: 'Unione Force, Arial Black, sans-serif' }}
+              >
                 MECHGENZ
               </span>
+              </span>
               <span className="text-xs font-medium tracking-widest text-gray-300">
+              <span 
+                className="text-xs font-medium tracking-widest text-gray-300"
+                style={{ fontFamily: 'Unione Force, Arial Black, sans-serif' }}
+              >
                 ADMIN
+              </span>
               </span>
             </div>
           </div>

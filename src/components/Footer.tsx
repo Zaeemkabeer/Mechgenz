@@ -416,7 +416,7 @@ const Footer = () => {
           {/* Company Info */}
           <div className="lg:col-span-1">
             <div className="flex items-center space-x-4 mb-6">
-              <div className="h-16 w-16 rounded-lg shadow-sm overflow-hidden bg-gray-700">
+              <div className="h-16 w-16 shadow-sm overflow-hidden bg-gray-700">
                 {logoLoaded ? (
                   <img
                     src={logoUrl}
@@ -433,7 +433,9 @@ const Footer = () => {
                   MECHGENZ
                 </span>
                 <span className="text-xs font-medium tracking-widest text-white/80">
+                <span className="text-xs font-normal tracking-wide text-white/80">
                   TRADING CONTRACTING AND SERVICES
+                </span>
                 </span>
               </div>
             </div>

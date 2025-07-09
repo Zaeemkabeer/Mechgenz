@@ -60,10 +60,20 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
             </div>
             <div className="flex flex-col">
               <span className="text-3xl font-bold text-white tracking-wider">
+              <span 
+                className="text-3xl font-bold text-white tracking-wider"
+                style={{ fontFamily: 'Unione Force, Arial Black, sans-serif' }}
+              >
                 MECHGENZ
               </span>
+              </span>
               <span className="text-xs font-medium tracking-widest text-gray-300">
+              <span 
+                className="text-xs font-medium tracking-widest text-gray-300"
+                style={{ fontFamily: 'Unione Force, Arial Black, sans-serif' }}
+              >
                 ADMIN PANEL
+              </span>
               </span>
             </div>
           </div>

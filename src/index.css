@@ -1,3 +1,15 @@
+/* Custom Font - Unione Force Regular */
+@font-face {
+  font-family: 'Unione Force';
+  src: 
+    url('/fonts/Unione-force-regular.otf') format('opentype'),
+    url('/fonts/Unione%20force%20regular.otf') format('opentype'),
+    url('/fonts/UnioneForceRegular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* Improves loading performance */
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

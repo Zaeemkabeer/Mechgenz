@@ -1,88 +1,120 @@
-import React, { useEffect } from 'react';
-import { ArrowLeft, Building, Award, Users, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import AnimationWrapper from '../components/AnimationWrapper';
 
 const OurClientsPage = () => {
+  const [currentClient, setCurrentClient] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+
   // Scroll to top when component mounts
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  const clientCategories = [
+  // Client data based on the uploaded image
+  const clients = [
     {
-      icon: <Building className="h-12 w-12" />,
-      title: 'Oil & Gas Sector',
-      description: 'Leading energy companies across the GCC region',
-      clients: ['Qatar Petroleum', 'ExxonMobil', 'Shell', 'Total Energies', 'ConocoPhillips', 'Chevron']
+      name: 'BOLTEC',
+      subtitle: 'METAL WORKSHOP',
+      logo: '/api/placeholder/200/100', // You'll need to add these logos to your public folder
+      description: 'Leading metal workshop and fabrication services provider',
+      sector: 'Manufacturing'
     },
     {
-      icon: <Globe className="h-12 w-12" />,
-      title: 'Infrastructure',
-      description: 'Government and private infrastructure projects',
-      clients: ['Qatar Rail', 'Ashghal', 'Ministry of Transport', 'Qatar Airways', 'Hamad International Airport', 'Public Works Authority']
+      name: 'EMCO',
+      subtitle: 'QATAR',
+      logo: '/api/placeholder/200/100',
+      description: 'Premier construction and engineering solutions company',
+      sector: 'Construction'
     },
     {
-      icon: <Award className="h-12 w-12" />,
-      title: 'Industrial',
-      description: 'Manufacturing and industrial facilities',
-      clients: ['Qatar Steel', 'Industries Qatar', 'Qatofin', 'QAPCO', 'Qatar Fertiliser Company', 'Mesaieed Industrial City']
+      name: 'Bin Salama',
+      subtitle: 'PLASTIC RECYCLING',
+      logo: '/api/placeholder/200/100',
+      description: 'Environmental solutions and plastic recycling specialist',
+      sector: 'Environmental'
     },
     {
-      icon: <Users className="h-12 w-12" />,
-      title: 'Commercial',
-      description: 'Commercial buildings and retail spaces',
-      clients: ['Msheireb Properties', 'Barwa Real Estate', 'UDC', 'Ezdan Holding', 'Qatari Diar', 'Al Futtaim Group']
+      name: 'ELLORA GROUP',
+      subtitle: 'quality forever',
+      logo: '/api/placeholder/200/100',
+      description: 'Quality-focused industrial and commercial services',
+      sector: 'Industrial'
+    },
+    {
+      name: 'Qatar Aeronautical College',
+      subtitle: '',
+      logo: '/api/placeholder/200/100',
+      description: 'Leading aviation education and training institution',
+      sector: 'Education'
+    },
+    {
+      name: 'ASPIRE ZONE',
+      subtitle: '',
+      logo: '/api/placeholder/200/100',
+      description: 'World-class sports and recreational facilities',
+      sector: 'Sports & Recreation'
+    },
+    {
+      name: 'Aalaf',
+      subtitle: 'آعلاف',
+      logo: '/api/placeholder/200/100',
+      description: 'Agricultural and livestock feed solutions',
+      sector: 'Agriculture'
+    },
+    {
+      name: 'QJet',
+      subtitle: 'كيوجت',
+      logo: '/api/placeholder/200/100',
+      description: 'Aviation and transportation services',
+      sector: 'Aviation'
+    },
+    {
+      name: 'KATARA',
+      subtitle: 'HOSPITALITY',
+      logo: '/api/placeholder/200/100',
+      description: 'Luxury hospitality and cultural experiences',
+      sector: 'Hospitality'
     }
   ];
 
-  const testimonials = [
-    {
-      quote: "MECHGENZ has consistently delivered high-quality MEP solutions for our projects. Their attention to detail and commitment to safety standards is exceptional.",
-      author: "Ahmed Al-Mansouri",
-      position: "Project Manager",
-      company: "Qatar Petroleum"
-    },
-    {
-      quote: "Working with MECHGENZ on our infrastructure projects has been a great experience. They understand the complexities of large-scale construction.",
-      author: "Sarah Johnson",
-      position: "Engineering Director",
-      company: "Qatar Rail"
-    },
-    {
-      quote: "Their trading division provides reliable supply of quality materials. MECHGENZ is our trusted partner for industrial equipment procurement.",
-      author: "Mohammed Al-Thani",
-      position: "Procurement Manager",
-      company: "Industries Qatar"
-    },
-    {
-      quote: "The team at MECHGENZ brings innovative solutions to every project. Their expertise in MEP systems integration is unmatched in the region.",
-      author: "Lisa Chen",
-      position: "Technical Director",
-      company: "Msheireb Properties"
-    },
-    {
-      quote: "MECHGENZ has been instrumental in our facility upgrades. Their professional approach and timely delivery make them our preferred contractor.",
-      author: "Omar Hassan",
-      position: "Operations Manager",
-      company: "Qatar Steel"
-    },
-    {
-      quote: "From design to execution, MECHGENZ delivers excellence. Their comprehensive services have streamlined our project management significantly.",
-      author: "Jennifer Williams",
-      position: "Project Coordinator",
-      company: "Hamad International Airport"
-    }
-  ];
+  // Auto-play functionality
+  useEffect(() => {
+    if (!isAutoPlaying) return;
+
+    const timer = setInterval(() => {
+      setCurrentClient((prev) => (prev + 1) % clients.length);
+    }, 4000);
+    
+    return () => clearInterval(timer);
+  }, [isAutoPlaying, clients.length]);
+
+  const nextClient = () => {
+    setCurrentClient((prev) => (prev + 1) % clients.length);
+    setIsAutoPlaying(false);
+  };
+
+  const prevClient = () => {
+    setCurrentClient((prev) => (prev - 1 + clients.length) % clients.length);
+    setIsAutoPlaying(false);
+  };
+
+  const goToClient = (index: number) => {
+    setCurrentClient(index);
+    setIsAutoPlaying(false);
+  };
+
+  const currentClientData = clients[currentClient];
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <Header />
       
       {/* Hero Section */}
-      <section className="pt-24 pb-12 bg-gradient-to-r from-gray-900 to-gray-800">
+      <section className="pt-24 pb-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center text-white">
             <Link 
@@ -92,123 +124,153 @@ const OurClientsPage = () => {
               <ArrowLeft className="h-5 w-5" />
               <span>Back to Home</span>
             </Link>
-            <h1 className="text-5xl font-bold mb-6">Our Clients</h1>
+            <h1 className="text-5xl font-bold mb-6">Our Valued Clients</h1>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              We are proud to serve leading organizations across Qatar and the GCC region, delivering exceptional results that build lasting partnerships.
+              Trusted partnerships with leading organizations across Qatar and the GCC region
             </p>
           </div>
         </div>
       </section>
 
-      {/* Client Stats */}
-      <section className="py-16 bg-gray-50">
+      {/* Main Client Display */}
+      <section className="py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative">
+            {/* Client Card */}
+            <AnimationWrapper key={currentClient} animation="scaleIn">
+              <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-12 lg:p-16 border border-white/20 text-center relative overflow-hidden">
+                {/* Background decoration */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full transform translate-x-32 -translate-y-32"></div>
+                <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-500/10 rounded-full transform -translate-x-24 translate-y-24"></div>
+                
+                <div className="relative z-10">
+                  {/* Client Logo */}
+                  <div className="mb-8">
+                    <div className="w-48 h-32 mx-auto bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30">
+                      <div className="text-white/60 text-sm">
+                        {currentClientData.name} Logo
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Client Info */}
+                  <div className="space-y-4 mb-8">
+                    <h2 className="text-4xl lg:text-5xl font-bold text-white">
+                      {currentClientData.name}
+                    </h2>
+                    {currentClientData.subtitle && (
+                      <p className="text-xl text-orange-300 font-medium">
+                        {currentClientData.subtitle}
+                      </p>
+                    )}
+                    <div className="inline-block px-4 py-2 bg-orange-500/20 rounded-full border border-orange-500/30">
+                      <span className="text-orange-300 font-medium">
+                        {currentClientData.sector}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <p className="text-gray-300 text-lg leading-relaxed max-w-2xl mx-auto">
+                    {currentClientData.description}
+                  </p>
+                </div>
+              </div>
+            </AnimationWrapper>
+
+            {/* Navigation Buttons */}
+            <button
+              onClick={prevClient}
+              className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white p-4 rounded-full transition-all duration-300 border border-white/20"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              onClick={nextClient}
+              className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white p-4 rounded-full transition-all duration-300 border border-white/20"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </div>
+
+          {/* Client Indicators */}
+          <div className="flex justify-center mt-12 space-x-3">
+            {clients.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => goToClient(index)}
+                className={`transition-all duration-300 ${
+                  index === currentClient 
+                    ? 'w-12 h-3 bg-orange-500 rounded-full' 
+                    : 'w-3 h-3 bg-white/30 rounded-full hover:bg-white/50'
+                }`}
+              />
+            ))}
+          </div>
+
+          {/* Client Counter */}
+          <div className="text-center mt-8">
+            <span className="text-white/60 text-lg">
+              {currentClient + 1} of {clients.length}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* Auto-play Control */}
+      <section className="pb-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <button
+            onClick={() => setIsAutoPlaying(!isAutoPlaying)}
+            className={`px-6 py-3 rounded-full font-medium transition-all duration-300 ${
+              isAutoPlaying 
+                ? 'bg-orange-500 hover:bg-orange-600 text-white' 
+                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+            }`}
+          >
+            {isAutoPlaying ? 'Pause Auto-play' : 'Resume Auto-play'}
+          </button>
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-16 border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8">
             <AnimationWrapper animation="bounceIn" delay={100}>
               <div className="text-center">
-                <div className="text-5xl font-bold text-orange-500 mb-2">150+</div>
-                <div className="text-gray-600 font-medium">Projects Completed</div>
+                <div className="text-4xl font-bold text-orange-500 mb-2">{clients.length}+</div>
+                <div className="text-white/80 font-medium">Trusted Clients</div>
               </div>
             </AnimationWrapper>
             <AnimationWrapper animation="bounceIn" delay={200}>
               <div className="text-center">
-                <div className="text-5xl font-bold text-orange-500 mb-2">50+</div>
-                <div className="text-gray-600 font-medium">Satisfied Clients</div>
+                <div className="text-4xl font-bold text-orange-500 mb-2">150+</div>
+                <div className="text-white/80 font-medium">Projects Completed</div>
               </div>
             </AnimationWrapper>
             <AnimationWrapper animation="bounceIn" delay={300}>
               <div className="text-center">
-                <div className="text-5xl font-bold text-orange-500 mb-2">15+</div>
-                <div className="text-gray-600 font-medium">Years Experience</div>
+                <div className="text-4xl font-bold text-orange-500 mb-2">15+</div>
+                <div className="text-white/80 font-medium">Years Experience</div>
               </div>
             </AnimationWrapper>
             <AnimationWrapper animation="bounceIn" delay={400}>
               <div className="text-center">
-                <div className="text-5xl font-bold text-orange-500 mb-2">100%</div>
-                <div className="text-gray-600 font-medium">Client Satisfaction</div>
+                <div className="text-4xl font-bold text-orange-500 mb-2">100%</div>
+                <div className="text-white/80 font-medium">Client Satisfaction</div>
               </div>
             </AnimationWrapper>
-          </div>
-        </div>
-      </section>
-
-      {/* Client Categories */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <AnimationWrapper>
-            <div className="text-center mb-16">
-              <h2 className="text-4xl font-bold text-gray-900 mb-8">Our Client Portfolio</h2>
-              <p className="text-gray-600 text-lg max-w-3xl mx-auto">
-                We serve diverse industries with specialized expertise and tailored solutions for each sector's unique requirements.
-              </p>
-            </div>
-          </AnimationWrapper>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-20">
-            {clientCategories.map((category, index) => (
-              <AnimationWrapper key={index} animation="scaleIn" delay={index * 100}>
-                <div className="group bg-gray-50 p-8 rounded-2xl text-center hover:bg-orange-500 hover:text-white transition-all duration-300 transform hover:-translate-y-2 hover:shadow-xl">
-                  <div className="text-orange-500 group-hover:text-white mb-6 flex justify-center">
-                    {category.icon}
-                  </div>
-                  <h3 className="text-xl font-bold mb-4 text-gray-900 group-hover:text-white">
-                    {category.title}
-                  </h3>
-                  <p className="text-gray-600 group-hover:text-white/90 mb-6 leading-relaxed">
-                    {category.description}
-                  </p>
-                  <div className="space-y-2">
-                    {category.clients.map((client, clientIndex) => (
-                      <div key={clientIndex} className="text-sm text-gray-500 group-hover:text-white/80 font-medium">
-                        {client}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </AnimationWrapper>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials Section */}
-      <section className="py-20 bg-gradient-to-r from-gray-900 to-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <AnimationWrapper>
-            <div className="text-center mb-16">
-              <h2 className="text-4xl font-bold text-white mb-4">What Our Clients Say</h2>
-              <div className="w-24 h-1 bg-orange-500 mx-auto"></div>
-            </div>
-          </AnimationWrapper>
-          
-          <div className="grid lg:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, index) => (
-              <AnimationWrapper key={index} animation="slideInUp" delay={index * 200}>
-                <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl border border-white/20 h-full flex flex-col">
-                  <div className="flex-grow mb-6">
-                    <div className="text-orange-400 text-4xl mb-4">"</div>
-                    <p className="text-gray-300 leading-relaxed italic">
-                      {testimonial.quote}
-                    </p>
-                  </div>
-                  <div className="border-t border-white/20 pt-4">
-                    <h4 className="font-semibold text-white">{testimonial.author}</h4>
-                    <p className="text-orange-400 text-sm">{testimonial.position}</p>
-                    <p className="text-gray-400 text-sm">{testimonial.company}</p>
-                  </div>
-                </div>
-              </AnimationWrapper>
-            ))}
           </div>
         </div>
       </section>
 
       {/* Call to Action */}
       <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <AnimationWrapper animation="fadeInUp">
             <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-8 lg:p-12 text-white text-center">
-              <h3 className="text-3xl font-bold mb-4">Join Our Growing Client Family</h3>
+              <h3 className="text-3xl font-bold mb-4">Join Our Client Family</h3>
               <p className="text-orange-100 text-lg mb-8 max-w-2xl mx-auto">
                 Ready to experience the MECHGENZ difference? Let's discuss how we can support your next project with our comprehensive services.
               </p>
