@@ -318,9 +318,9 @@ app = FastAPI(
 # CORS middleware with environment variable configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["https://mechgenz.com"],  # ✅ Netlify frontend URL
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
