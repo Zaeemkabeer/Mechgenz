@@ -18,14 +18,45 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# MongoDB connection with improved error handling
+# Environment Variables Configuration
 MONGODB_CONNECTION_STRING = os.getenv("MONGODB_CONNECTION_STRING")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "mechgenz4@gmail.com")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "mechgenz4")  # SECURITY: Should be hashed in production
+ALLOWED_ORIGINS_STR = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,https://mechgenz.com")
+ADMIN_NOTIFICATION_FROM_EMAIL = os.getenv("ADMIN_NOTIFICATION_FROM_EMAIL", "MECHGENZ Contact Form <mechgenz4@gmail.com>")
+ADMIN_NOTIFICATION_TO_EMAIL = os.getenv("ADMIN_NOTIFICATION_TO_EMAIL", "mechgenz4@gmail.com")
+FRONTEND_ADMIN_URL = os.getenv("FRONTEND_ADMIN_URL", "http://localhost:5173/admin/user-inquiries")
+REPLY_FROM_EMAIL = os.getenv("REPLY_FROM_EMAIL", "noreply@resend.dev")
+DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
+
+# Parse ALLOWED_ORIGINS from comma-separated string
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_STR.split(',')]
+
+# Validate required environment variables
 if not MONGODB_CONNECTION_STRING:
     print("ERROR: MONGODB_CONNECTION_STRING not found in environment variables")
-    print("Please check your .env file and ensure the connection string is properly set")
+    print("Please check your environment variables and ensure the connection string is properly set")
 
+if not RESEND_API_KEY:
+    print("ERROR: RESEND_API_KEY not found in environment variables")
+    print("Please check your environment variables and ensure the Resend API key is properly set")
+    # Fallback to hardcoded key for backward compatibility (remove in production)
+    RESEND_API_KEY = "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW"
+    print("⚠️ Using fallback Resend API key - please set RESEND_API_KEY environment variable")
+
+# MongoDB connection with improved error handling
 try:
-    print(f"Attempting to connect to MongoDB Atlas...")
+    print(f"🔧 Environment Configuration:")
+    print(f"   - Debug Mode: {DEBUG_MODE}")
+    print(f"   - Admin Email: {ADMIN_EMAIL}")
+    print(f"   - Allowed Origins: {ALLOWED_ORIGINS}")
+    print(f"   - Frontend Admin URL: {FRONTEND_ADMIN_URL}")
+    print(f"   - Admin Notification From: {ADMIN_NOTIFICATION_FROM_EMAIL}")
+    print(f"   - Admin Notification To: {ADMIN_NOTIFICATION_TO_EMAIL}")
+    print(f"   - Reply From Email: {REPLY_FROM_EMAIL}")
+    
+    print(f"🔄 Attempting to connect to MongoDB Atlas...")
     print(f"Connection string: {MONGODB_CONNECTION_STRING[:50]}...")  # Only show first 50 chars for security
     
     # Configure MongoDB client with proper timeout settings for Atlas
@@ -78,7 +109,7 @@ except Exception as e:
     website_images_collection = None
 
 # Resend configuration
-resend.api_key = "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW"
+resend.api_key = RESEND_API_KEY
 
 # Create necessary directories
 os.makedirs("uploads", exist_ok=True)
@@ -240,20 +271,20 @@ async def initialize_admin():
         return
     
     try:
-        existing_admin = admin_collection.find_one({"email": "mechgenz4@gmail.com"})
+        existing_admin = admin_collection.find_one({"email": ADMIN_EMAIL})
         if not existing_admin:
             admin_doc = {
                 "name": "MECHGENZ Admin",
-                "email": "mechgenz4@gmail.com",
-                "password": "mechgenz4",  # In production, this should be hashed
+                "email": ADMIN_EMAIL,
+                "password": ADMIN_PASSWORD,  # SECURITY: In production, this should be hashed
                 "role": "admin",
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc)
             }
             admin_collection.insert_one(admin_doc)
-            print("✅ Admin user initialized successfully")
+            print(f"✅ Admin user initialized successfully with email: {ADMIN_EMAIL}")
         else:
-            print("✅ Admin user already exists")
+            print(f"✅ Admin user already exists with email: {ADMIN_EMAIL}")
     except Exception as e:
         print(f"❌ Error initializing admin: {e}")
 
@@ -284,10 +315,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware with environment variable configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "https://mechgenz.com"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -363,7 +394,9 @@ async def root():
         "message": "MECHGENZ Contact Form API is running", 
         "status": "healthy",
         "database": db_status,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "debug_mode": DEBUG_MODE,
+        "allowed_origins": ALLOWED_ORIGINS
     }
 
 @app.get("/health")
@@ -375,6 +408,12 @@ async def health_check():
         "services": {
             "api": "healthy",
             "database": "healthy" if db is not None else "unhealthy"
+        },
+        "config": {
+            "debug_mode": DEBUG_MODE,
+            "allowed_origins_count": len(ALLOWED_ORIGINS),
+            "admin_email": ADMIN_EMAIL,
+            "frontend_admin_url": FRONTEND_ADMIN_URL
         }
     }
     
@@ -434,13 +473,6 @@ async def submit_contact_form(
         except Exception as email_error:
             print(f"❌ Failed to send admin notification email: {email_error}")
             # Don't fail the form submission if email fails
-        
-        # Send email notification to admin
-        try:
-            await send_admin_notification(submission, uploaded_files)
-        except Exception as email_error:
-            # Log the error but don't fail the form submission
-            print(f"⚠️ Failed to send admin notification email: {email_error}")
         
         return {
             "success": True,
@@ -558,7 +590,7 @@ async def send_admin_notification(submission: dict, uploaded_files: list):
                     
                     <!-- Action Buttons -->
                     <div style="text-align: center; margin: 30px 0;">
-                        <a href="http://localhost:5173/admin/user-inquiries" 
+                        <a href="{FRONTEND_ADMIN_URL}" 
                            style="display: inline-block; background-color: #ff5722; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 0 10px;">
                             🖥️ View in Admin Panel
                         </a>
@@ -598,7 +630,7 @@ async def send_admin_notification(submission: dict, uploaded_files: list):
         
         📎 ATTACHMENTS: {len(uploaded_files)} file(s) attached
         
-        🖥️ View in Admin Panel: http://localhost:5173/admin/user-inquiries
+        🖥️ View in Admin Panel: {FRONTEND_ADMIN_URL}
         ↩️ Reply directly to: {submission.get('email', '')}
         
         ---
@@ -607,8 +639,8 @@ async def send_admin_notification(submission: dict, uploaded_files: list):
         
         # Prepare email data
         email_data = {
-            "from": "MECHGENZ Contact Form <mechgenz4@gmail.com>",
-            "to": ["mechgenz4@gmail.com"],
+            "from": ADMIN_NOTIFICATION_FROM_EMAIL,
+            "to": [ADMIN_NOTIFICATION_TO_EMAIL],
             "reply_to": [submission.get('email', 'noreply@mechgenz.com')],
             "subject": f"🔔 New Contact Form Submission from {submission.get('name', 'Unknown User')}",
             "html": html_content,
@@ -620,7 +652,7 @@ async def send_admin_notification(submission: dict, uploaded_files: list):
             email_data["attachments"] = attachments
             print(f"📎 Adding {len(attachments)} attachments to email")
         
-        print(f"📤 Sending admin notification email to mechgenz4@gmail.com...")
+        print(f"📤 Sending admin notification email to {ADMIN_NOTIFICATION_TO_EMAIL}...")
         print(f"📧 Subject: {email_data['subject']}")
         print(f"📎 Attachments: {len(attachments)} files")
         
@@ -640,192 +672,6 @@ async def send_admin_notification(submission: dict, uploaded_files: list):
     except Exception as e:
         print(f"❌ Error sending admin notification email: {str(e)}")
         print(f"📧 Error details: {type(e).__name__}: {e}")
-        raise e
-
-# Add missing import
-import base64
-
-async def send_admin_notification(submission: dict, uploaded_files: List[dict]):
-    """Send email notification to admin when a new contact form is submitted"""
-    try:
-        # Prepare file attachments for email
-        email_attachments = []
-        
-        for file_info in uploaded_files:
-            try:
-                file_path = os.path.join("uploads", file_info["saved_name"])
-                if os.path.exists(file_path):
-                    # Read file content and encode as base64
-                    with open(file_path, "rb") as f:
-                        file_content = f.read()
-                        file_base64 = base64.b64encode(file_content).decode('utf-8')
-                    
-                    # Add attachment to email
-                    email_attachments.append({
-                        "filename": file_info["original_name"],
-                        "content": file_base64,
-                        "content_type": file_info["content_type"] or "application/octet-stream"
-                    })
-            except Exception as file_error:
-                print(f"⚠️ Error processing file {file_info['original_name']}: {file_error}")
-                continue
-        
-        # Create HTML email content for admin notification
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>New Contact Form Submission - MECHGENZ</title>
-        </head>
-        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f5f5f5;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-                <!-- Header -->
-                <div style="background: linear-gradient(135deg, #ff5722 0%, #ff7043 100%); padding: 30px 20px; text-align: center;">
-                    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">MECHGENZ</h1>
-                    <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px; letter-spacing: 2px;">TRADING CONTRACTING AND SERVICES</p>
-                </div>
-                
-                <!-- Content -->
-                <div style="padding: 40px 30px;">
-                    <div style="background-color: #fff3e0; border-left: 4px solid #ff5722; padding: 20px; margin-bottom: 30px;">
-                        <h2 style="color: #ff5722; margin-top: 0; font-size: 24px;">🔔 New Contact Form Submission</h2>
-                        <p style="margin-bottom: 0; color: #666;">You have received a new inquiry through the website contact form.</p>
-                    </div>
-                    
-                    <!-- Contact Details -->
-                    <div style="background-color: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
-                        <h3 style="color: #ff5722; margin-top: 0; margin-bottom: 20px; font-size: 18px;">📋 Contact Information</h3>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <strong style="color: #333; display: inline-block; width: 80px;">Name:</strong>
-                            <span style="color: #666;">{submission.get('name', 'Not provided')}</span>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <strong style="color: #333; display: inline-block; width: 80px;">Email:</strong>
-                            <span style="color: #666;">{submission.get('email', 'Not provided')}</span>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <strong style="color: #333; display: inline-block; width: 80px;">Phone:</strong>
-                            <span style="color: #666;">{submission.get('phone', 'Not provided')}</span>
-                        </div>
-                        
-                        <div style="margin-bottom: 0;">
-                            <strong style="color: #333; display: inline-block; width: 80px;">Submitted:</strong>
-                            <span style="color: #666;">{submission.get('submitted_at', datetime.now(timezone.utc)).strftime('%B %d, %Y at %I:%M %p UTC') if isinstance(submission.get('submitted_at'), datetime) else submission.get('submitted_at', 'Unknown')}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Message -->
-                    <div style="background-color: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
-                        <h3 style="color: #ff5722; margin-top: 0; margin-bottom: 15px; font-size: 18px;">💬 Message</h3>
-                        <div style="background-color: white; padding: 20px; border-radius: 6px; border: 1px solid #e0e0e0;">
-                            <p style="margin: 0; color: #333; white-space: pre-line; line-height: 1.6;">{submission.get('message', 'No message provided')}</p>
-                        </div>
-                    </div>
-                    
-                    <!-- Attachments Info -->
-                    {f'''
-                    <div style="background-color: #e8f5e8; padding: 25px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #c8e6c9;">
-                        <h3 style="color: #2e7d32; margin-top: 0; margin-bottom: 15px; font-size: 18px;">📎 Attachments ({len(uploaded_files)})</h3>
-                        <p style="margin: 0; color: #2e7d32; font-size: 14px;">
-                            The following files have been attached to this inquiry and are included with this email:
-                        </p>
-                        <ul style="margin: 10px 0 0 0; padding-left: 20px; color: #2e7d32;">
-                            {chr(10).join([f'<li style="margin-bottom: 5px;"><strong>{file_info["original_name"]}</strong> ({file_info.get("file_size", 0) // 1024} KB)</li>' for file_info in uploaded_files])}
-                        </ul>
-                    </div>
-                    ''' if uploaded_files else '''
-                    <div style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; margin-bottom: 25px; text-align: center;">
-                        <p style="margin: 0; color: #666; font-style: italic;">No files were attached to this inquiry.</p>
-                    </div>
-                    '''}
-                    
-                    <!-- Action Buttons -->
-                    <div style="text-align: center; margin-top: 30px;">
-                        <a href="http://localhost:5173/admin/user-inquiries" 
-                           style="background-color: #ff5722; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin-right: 15px;">
-                            View in Admin Panel
-                        </a>
-                        <a href="mailto:{submission.get('email', '')}?subject=Re: Your inquiry to MECHGENZ" 
-                           style="background-color: #2196F3; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                            Reply Directly
-                        </a>
-                    </div>
-                </div>
-                
-                <!-- Footer -->
-                <div style="background-color: #2c3e50; color: white; padding: 25px 20px; text-align: center;">
-                    <p style="margin: 0; font-size: 14px; color: #bdc3c7;">
-                        This is an automated notification from your MECHGENZ website contact form.
-                    </p>
-                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #95a5a6;">
-                        © 2024 MECHGENZ W.L.L. All Rights Reserved.
-                    </p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-        # Plain text version for email clients that don't support HTML
-        text_content = f"""
-        NEW CONTACT FORM SUBMISSION - MECHGENZ
-        =====================================
-        
-        You have received a new inquiry through the website contact form.
-        
-        CONTACT INFORMATION:
-        Name: {submission.get('name', 'Not provided')}
-        Email: {submission.get('email', 'Not provided')}
-        Phone: {submission.get('phone', 'Not provided')}
-        Submitted: {submission.get('submitted_at', datetime.now(timezone.utc)).strftime('%B %d, %Y at %I:%M %p UTC') if isinstance(submission.get('submitted_at'), datetime) else submission.get('submitted_at', 'Unknown')}
-        
-        MESSAGE:
-        {submission.get('message', 'No message provided')}
-        
-        ATTACHMENTS:
-        {f"{len(uploaded_files)} file(s) attached" if uploaded_files else "No files attached"}
-        {chr(10).join([f"- {file_info['original_name']} ({file_info.get('file_size', 0) // 1024} KB)" for file_info in uploaded_files]) if uploaded_files else ""}
-        
-        ACTIONS:
-        - View in Admin Panel: http://localhost:5173/admin/user-inquiries
-        - Reply directly to: {submission.get('email', '')}
-        
-        ---
-        This is an automated notification from your MECHGENZ website contact form.
-        """
-        
-        # Prepare email data
-        email_data = {
-            "from": "noreply@resend.dev",  # Use Resend's default verified domain
-            "to": "mechgenz4@gmail.com",
-            "reply_to": submission.get('email', 'noreply@mechgenz.com'),
-            "subject": f"🔔 New Contact Form Submission from {submission.get('name', 'Unknown')}",
-            "html": html_content,
-            "text": text_content
-        }
-        
-        # Add attachments if any
-        if email_attachments:
-            email_data["attachments"] = email_attachments
-        
-        # Send email using Resend
-        email_response = resend.Emails.send(email_data)
-        
-        print(f"✅ Admin notification email sent successfully. Email ID: {email_response.get('id', 'Unknown')}")
-        
-        return {
-            "success": True,
-            "message": "Admin notification sent successfully",
-            "email_id": email_response.get("id")
-        }
-        
-    except Exception as e:
-        print(f"❌ Error sending admin notification email: {str(e)}")
         raise e
 
 @app.get("/api/submissions")
@@ -1078,9 +924,9 @@ async def send_reply(reply_data: EmailReply):
         
         # Send email using Resend
         email_response = resend.Emails.send({
-            "from": "noreply@resend.dev",  # Use Resend's default domain
-            "reply_to": user_email,  # Admin can reply directly to the user
-            "reply_to": "mechgenz4@gmail.com",  # User can reply to admin
+            "from": REPLY_FROM_EMAIL,
+            "to": reply_data.to_email,
+            "reply_to": ADMIN_NOTIFICATION_TO_EMAIL,  # User can reply to admin
             "subject": "Reply from MECHGENZ - Your Inquiry",
             "html": html_content,
             "text": text_content
@@ -1104,9 +950,11 @@ async def admin_login(login_data: AdminLogin):
     
     try:
         # Find admin user
+        # SECURITY WARNING: This uses plain text password comparison
+        # In production, implement proper password hashing (bcrypt, etc.)
         admin = admin_collection.find_one({
             "email": login_data.email,
-            "password": login_data.password  # In production, use proper password hashing
+            "password": login_data.password
         })
         
         if not admin:
@@ -1134,7 +982,7 @@ async def get_admin_profile():
         raise HTTPException(status_code=500, detail="Database connection not available")
     
     try:
-        admin = admin_collection.find_one({"email": "mechgenz4@gmail.com"})
+        admin = admin_collection.find_one({"email": ADMIN_EMAIL})
         if not admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
@@ -1157,11 +1005,13 @@ async def update_admin_profile(update_data: AdminUpdate):
     
     try:
         # Find current admin
-        admin = admin_collection.find_one({"email": "mechgenz4@gmail.com"})
+        admin = admin_collection.find_one({"email": ADMIN_EMAIL})
         if not admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
         # If password change is requested, verify current password
+        # SECURITY WARNING: This uses plain text password comparison
+        # In production, implement proper password hashing (bcrypt, etc.)
         update_fields = {
             "name": update_data.name,
             "email": update_data.email,
@@ -1171,11 +1021,11 @@ async def update_admin_profile(update_data: AdminUpdate):
         if update_data.password and update_data.currentPassword:
             if admin["password"] != update_data.currentPassword:
                 raise HTTPException(status_code=400, detail="Current password is incorrect")
-            update_fields["password"] = update_data.password
+            update_fields["password"] = update_data.password  # Should be hashed in production
         
         # Update admin profile
         result = admin_collection.update_one(
-            {"email": "mechgenz4@gmail.com"},
+            {"email": ADMIN_EMAIL},
             {"$set": update_fields}
         )
         
@@ -1482,6 +1332,7 @@ async def delete_website_image(image_id: str, delete_type: str = "image_only"):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting image: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting MECHGENZ API server...")
