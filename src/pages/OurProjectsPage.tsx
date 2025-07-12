@@ -14,19 +14,19 @@ const OurProjectsPage = () => {
   
   const projectImageConfigs = [
     { 
-      id: 'portfolio_civil_1', 
+      id: 'civil_structure_project_1',  // Updated to match Gallery Management
       fallback: 'https://images.pexels.com/photos/1216589/pexels-photo-1216589.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
       title: 'Construction Project Alpha',
       description: 'Modern infrastructure development with advanced MEP systems integration'
     },
     { 
-      id: 'portfolio_road_1', 
+      id: 'road_infrastructure_project_1',  // Updated to match Gallery Management
       fallback: 'https://images.pexels.com/photos/280221/pexels-photo-280221.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
       title: 'Infrastructure Project Beta',
       description: 'Comprehensive road and utility infrastructure development'
     },
     { 
-      id: 'portfolio_fitout_1', 
+      id: 'fit_out_project_1',  // Updated to match Gallery Management
       fallback: 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&dpr=1',
       title: 'Commercial Project Gamma',
       description: 'High-end commercial fit-out with state-of-the-art facilities'
