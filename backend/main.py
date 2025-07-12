@@ -5,10 +5,12 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, PyMongoError
 from datetime import datetime
 from typing import Dict, Any, Optional
+from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 import logging
 import resend
+import json
 
 # Load environment variables
 load_dotenv()
@@ -17,25 +19,6 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="MECHGENZ Contact Form API",
-    description="Backend API for handling contact form submissions",
-    version="1.0.0"
-)
-
-# CORS middleware configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "https://your-domain.com"],  # Add your frontend URLs
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
-
-from dotenv import load_dotenv
-load_dotenv()
-
 # MongoDB connection
 MONGODB_CONNECTION_STRING = os.getenv("MONGODB_CONNECTION_STRING")
 
@@ -43,8 +26,9 @@ DATABASE_NAME = "MECHGENZ"
 COLLECTION_NAME = "contact_submissions"
 
 # Resend configuration
-RESEND_API_KEY = "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW"
-COMPANY_EMAIL = "mechgenz4@gmail.com"
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW")
+COMPANY_EMAIL = os.getenv("REPLY_FROM_EMAIL", "mechgenz4@gmail.com")
+VERIFIED_DOMAIN = os.getenv("VERIFIED_DOMAIN", None)  # Set this to your verified domain
 
 # Initialize Resend
 resend.api_key = RESEND_API_KEY
@@ -97,10 +81,10 @@ def close_mongodb_connection():
         is_db_connected = False
         logger.info("MongoDB connection closed")
 
-# Initialize MongoDB connection on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database connection on startup"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown"""
+    # Startup
     logger.info("Starting up MECHGENZ Contact Form API...")
     success = connect_to_mongodb()
     if not success:
@@ -109,11 +93,31 @@ async def startup_event():
         logger.info("1. Create a .env file in the backend directory")
         logger.info("2. Add your MongoDB connection string: MONGODB_CONNECTION_STRING=your_connection_string")
         logger.info("3. Restart the server")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Close database connection on shutdown"""
+    
+    yield
+    
+    # Shutdown
     close_mongodb_connection()
+
+# Initialize FastAPI app with lifespan
+app = FastAPI(
+    title="MECHGENZ Contact Form API",
+    description="Backend API for handling contact form submissions",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Get CORS origins from environment variable
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+
+# CORS middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Health check endpoint
 @app.get("/")
@@ -155,79 +159,192 @@ async def health_check():
             }
         )
 
-@app.post("/api/contact")
-async def submit_contact_form(request: Request):
-    """
-    Handle contact form submissions
-    Accepts any JSON payload and stores it dynamically in MongoDB
-    """
+async def send_notification_email(form_data):
+    """Send notification email to company when a new contact form is submitted"""
     try:
-        logger.info("Received contact form submission")
+        # Create email content for company notification
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>New Contact Form Submission - MECHGENZ</title>
+            <style>
+                body {{
+                    font-family: 'Arial', sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #f4f4f4;
+                }}
+                .email-container {{
+                    background-color: #ffffff;
+                    border-radius: 10px;
+                    padding: 30px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                }}
+                .header {{
+                    text-align: center;
+                    border-bottom: 3px solid #ff5722;
+                    padding-bottom: 20px;
+                    margin-bottom: 30px;
+                }}
+                .logo {{
+                    font-size: 28px;
+                    font-weight: bold;
+                    color: #ff5722;
+                    letter-spacing: 2px;
+                }}
+                .tagline {{
+                    font-size: 12px;
+                    color: #666;
+                    letter-spacing: 3px;
+                    margin-top: 5px;
+                }}
+                .alert {{
+                    background-color: #ff5722;
+                    color: white;
+                    padding: 15px;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                    text-align: center;
+                    font-weight: bold;
+                }}
+                .form-data {{
+                    background-color: #f9f9f9;
+                    padding: 20px;
+                    border-left: 4px solid #ff5722;
+                    margin: 20px 0;
+                    border-radius: 5px;
+                }}
+                .field {{
+                    margin-bottom: 15px;
+                    padding-bottom: 15px;
+                    border-bottom: 1px solid #eee;
+                }}
+                .field:last-child {{
+                    border-bottom: none;
+                    margin-bottom: 0;
+                    padding-bottom: 0;
+                }}
+                .field-label {{
+                    font-weight: bold;
+                    color: #ff5722;
+                    margin-bottom: 5px;
+                }}
+                .field-value {{
+                    color: #333;
+                    white-space: pre-wrap;
+                }}
+                .footer {{
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid #eee;
+                    text-align: center;
+                    color: #666;
+                    font-size: 14px;
+                }}
+                .action-buttons {{
+                    text-align: center;
+                    margin: 30px 0;
+                }}
+                .btn {{
+                    display: inline-block;
+                    padding: 12px 20px;
+                    margin: 5px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    color: white;
+                }}
+                .btn-primary {{
+                    background-color: #ff5722;
+                }}
+                .btn-secondary {{
+                    background-color: #2c3e50;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                <div class="header">
+                    <div class="logo">MECHGENZ</div>
+                    <div class="tagline">TRADING CONTRACTING AND SERVICES</div>
+                </div>
+                
+                <div class="alert">
+                    🔔 NEW CONTACT FORM SUBMISSION
+                </div>
+                
+                <p>A new contact form has been submitted on the MECHGENZ website. Here are the details:</p>
+                
+                <div class="form-data">
+                    <div class="field">
+                        <div class="field-label">Full Name:</div>
+                        <div class="field-value">{form_data.get('name', 'Not provided')}</div>
+                    </div>
+                    
+                    <div class="field">
+                        <div class="field-label">Phone Number:</div>
+                        <div class="field-value">{form_data.get('phone', 'Not provided')}</div>
+                    </div>
+                    
+                    <div class="field">
+                        <div class="field-label">Email Address:</div>
+                        <div class="field-value">{form_data.get('email', 'Not provided')}</div>
+                    </div>
+                    
+                    <div class="field">
+                        <div class="field-label">Message:</div>
+                        <div class="field-value">{form_data.get('message', 'Not provided')}</div>
+                    </div>
+                </div>
+                
+                <p><strong>Submitted at:</strong> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+                
+                <div class="action-buttons">
+                    <a href="http://localhost:5173/admin/user-inquiries" class="btn btn-primary">
+                        🖥️ View in Admin Panel
+                    </a>
+                    <a href="mailto:{form_data.get('email', '')}?subject=Re: Your inquiry to MECHGENZ" class="btn btn-secondary">
+                        ↩️ Reply Directly
+                    </a>
+                </div>
+                
+                <p>Please respond to this inquiry as soon as possible.</p>
+                
+                <div class="footer">
+                    <p>This notification was sent automatically from the MECHGENZ website contact form.<br>
+                    © 2024 MECHGENZ W.L.L. All Rights Reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
         
-        # Check if database connection is available
-        if not is_db_connected or collection is None:
-            logger.error("Database connection not available")
-            raise HTTPException(
-                status_code=503, 
-                detail="Database connection not available. Please check MongoDB configuration."
-            )
-        
-        # Get the JSON data from request
-        form_data = await request.json()
-        logger.info(f"Form data received: {form_data}")
-        
-        # Validate that we have some data
-        if not form_data:
-            raise HTTPException(
-                status_code=400,
-                detail="No data provided in request body"
-            )
-        
-        # Add metadata to the submission
-        submission_data = {
-            **form_data,  # Include all form data as-is
-            "submitted_at": datetime.utcnow(),
-            "ip_address": request.client.host if request.client else None,
-            "user_agent": request.headers.get("user-agent"),
-            "status": "new"
+        # Send notification email to company - USING VERIFIED DOMAIN
+        params = {
+            "from": "MECHGENZ Website <info@mechgenz.com>",  # ✅ Using verified domain
+            "to": [COMPANY_EMAIL],  # Admin will receive at mechgenz4@gmail.com
+            "subject": f"🔔 New Contact Form Submission from {form_data.get('name', 'Unknown')}",
+            "html": html_content,
+            "reply_to": form_data.get('email', COMPANY_EMAIL)  # User can reply back
         }
         
-        logger.info(f"Attempting to insert data into MongoDB: {submission_data}")
+        email_response = resend.Emails.send(params)
+        logger.info(f"Notification email sent successfully. Resend ID: {email_response.get('id', 'Unknown')}")
         
-        # Insert the document into MongoDB
-        result = collection.insert_one(submission_data)
-        
-        # Log the successful submission
-        logger.info(f"Contact form submitted successfully. ID: {result.inserted_id}")
-        
-        return {
-            "success": True,
-            "message": "Contact form submitted successfully",
-            "submission_id": str(result.inserted_id),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except PyMongoError as e:
-        logger.error(f"MongoDB error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database error occurred while saving submission: {str(e)}"
-        )
     except Exception as e:
-        logger.error(f"Unexpected error in contact form submission: {e}")
-        logger.error(f"Error type: {type(e).__name__}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"An unexpected error occurred: {str(e)}"
-        )
+        logger.error(f"Failed to send notification email: {e}")
+        # Don't raise the exception - we don't want email failures to break form submission
 
 @app.post("/api/send-reply")
 async def send_reply_email(request: Request):
     """
-    Send email reply to user using Resend API
+    Send email reply directly to user from admin
     """
     try:
         logger.info("Received email reply request")
@@ -250,7 +367,7 @@ async def send_reply_email(request: Request):
         reply_message = email_data['reply_message']
         original_message = email_data.get('original_message', '')
         
-        # Create email content
+        # Create professional reply email content for the user
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -316,14 +433,6 @@ async def send_reply_email(request: Request):
                     margin-top: 0;
                     font-size: 14px;
                 }}
-                .footer {{
-                    margin-top: 30px;
-                    padding-top: 20px;
-                    border-top: 1px solid #eee;
-                    text-align: center;
-                    color: #666;
-                    font-size: 14px;
-                }}
                 .contact-info {{
                     margin: 20px 0;
                     padding: 15px;
@@ -333,6 +442,14 @@ async def send_reply_email(request: Request):
                 .contact-info h4 {{
                     color: #ff5722;
                     margin-top: 0;
+                }}
+                .footer {{
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid #eee;
+                    text-align: center;
+                    color: #666;
+                    font-size: 14px;
                 }}
                 .signature {{
                     margin-top: 30px;
@@ -351,44 +468,42 @@ async def send_reply_email(request: Request):
                     <div class="tagline">TRADING CONTRACTING AND SERVICES</div>
                 </div>
                 
-                <div class="greeting">
-                    Dear {to_name},
-                </div>
+                <div class="greeting">Dear {to_name},</div>
                 
                 <p>Thank you for contacting MECHGENZ Trading Contracting & Services. We appreciate your inquiry and are pleased to respond to your message.</p>
                 
                 <div class="reply-content">
                     <h3 style="color: #ff5722; margin-top: 0;">Our Response:</h3>
-                    <p style="white-space: pre-wrap;">{reply_message}</p>
+                    <p style="margin-bottom: 0; white-space: pre-line;">{reply_message}</p>
                 </div>
                 
                 {f'''
                 <div class="original-message">
                     <h4>Your Original Message:</h4>
-                    <p style="white-space: pre-wrap;">{original_message}</p>
+                    <p style="margin-bottom: 0; font-style: italic; white-space: pre-line;">{original_message}</p>
                 </div>
                 ''' if original_message else ''}
                 
-                <div class="contact-info">
-                    <h4>Contact Information</h4>
-                    <p><strong>Office:</strong> 31st Floor, Office #312, Marina Twin Towers, Tower B<br>
-                    P.O. Box 12784, Lusail, Qatar</p>
-                    <p><strong>Phone:</strong> +974 44117639 | +974 44374547 | +974 30401080</p>
-                    <p><strong>Email:</strong> info@mechgenz.com | mishal.basheer@mechgenz.com</p>
-                    <p><strong>Website:</strong> www.mechgenz.com</p>
-                </div>
-                
                 <p>If you have any further questions or need additional information, please don't hesitate to contact us. We look forward to the opportunity to work with you.</p>
                 
+                <div class="contact-info">
+                    <h4>Contact Information</h4>
+                    <p><strong>Office:</strong> Buzwair Complex, 4th Floor, Rawdat Al Khail St, Doha Qatar<br>
+                    <strong>P.O. Box:</strong> 22911</p>
+                    <p><strong>Phone:</strong> +974 30401080</p>
+                    <p><strong>Email:</strong> info@mechgenz.com | mishal.basheer@mechgenz.com</p>
+                    <p><strong>Website:</strong> www.mechgenz.com</p>
+                    <p><strong>Managing Director:</strong> Mishal Basheer</p>
+                </div>
+                
                 <div class="signature">
-                    <p style="margin: 0;"><strong>Best Regards,</strong></p>
-                    <p style="margin: 5px 0 0 0;">MECHGENZ Team</p>
-                    <p style="margin: 5px 0 0 0; font-size: 12px;">Trading Contracting and Services</p>
+                    <p style="margin: 0;"><strong>Best Regards,<br>
+                    MECHGENZ Team<br>
+                    Trading Contracting and Services</strong></p>
                 </div>
                 
                 <div class="footer">
-                    <p>This email was sent from MECHGENZ Trading Contracting & Services.<br>
-                    © 2024 MECHGENZ W.L.L. All Rights Reserved.</p>
+                    <p>© 2024 MECHGENZ W.L.L. All Rights Reserved.</p>
                 </div>
             </div>
         </body>
@@ -404,16 +519,17 @@ async def send_reply_email(request: Request):
         Our Response:
         {reply_message}
 
-        {f"Your Original Message:\n{original_message}\n" if original_message else ""}
-
-        Contact Information:
-        Office: 31st Floor, Office #312, Marina Twin Towers, Tower B
-        P.O. Box 12784, Lusail, Qatar
-        Phone: +974 44117639 | +974 44374547 | +974 30401080
-        Email: info@mechgenz.com | mishal.basheer@mechgenz.com
-        Website: www.mechgenz.com
+        {f"Your Original Message:\\n{original_message}\\n" if original_message else ""}
 
         If you have any further questions or need additional information, please don't hesitate to contact us. We look forward to the opportunity to work with you.
+
+        Contact Information:
+        Office: Buzwair Complex, 4th Floor, Rawdat Al Khail St, Doha Qatar
+        P.O. Box: 22911
+        Phone: +974 30401080
+        Email: info@mechgenz.com | mishal.basheer@mechgenz.com
+        Website: www.mechgenz.com
+        Managing Director: Mishal Basheer
 
         Best Regards,
         MECHGENZ Team
@@ -422,45 +538,156 @@ async def send_reply_email(request: Request):
         © 2024 MECHGENZ W.L.L. All Rights Reserved.
         """
         
-        # Send email using Resend
-        logger.info(f"Sending email to {to_email} using Resend API")
+        # Send email directly to the user using Resend - USING VERIFIED DOMAIN
+        logger.info(f"Sending reply email directly to user {to_name} ({to_email}) using Resend API")
         
         params = {
-            "from": f"MECHGENZ <{COMPANY_EMAIL}>",
-            "to": [to_email],
-            "subject": f"Re: Your Inquiry - MECHGENZ Trading Contracting & Services",
+            "from": "MECHGENZ <info@mechgenz.com>",  # ✅ Using verified domain
+            "to": [to_email],  # Send directly to the user
+            "subject": f"Reply from MECHGENZ - Your Inquiry",
             "html": html_content,
             "text": text_content,
-            "reply_to": COMPANY_EMAIL
+            "reply_to": COMPANY_EMAIL  # User can reply back to mechgenz4@gmail.com
         }
         
         email_response = resend.Emails.send(params)
         logger.info(f"Resend API response: {email_response}")
         
         if email_response and email_response.get('id'):
-            logger.info(f"Email sent successfully. Resend ID: {email_response['id']}")
+            logger.info(f"Reply email sent successfully to {to_email}. Resend ID: {email_response['id']}")
             return {
                 "success": True,
-                "message": "Email reply sent successfully",
+                "message": f"Reply sent successfully to {to_name} ({to_email})",
                 "email_id": email_response['id'],
+                "customer_email": to_email,
+                "customer_name": to_name,
                 "timestamp": datetime.utcnow().isoformat()
             }
         else:
-            logger.error(f"Failed to send email. Resend response: {email_response}")
+            logger.error(f"Failed to send reply email. Resend response: {email_response}")
             raise HTTPException(
                 status_code=500,
-                detail="Failed to send email. Please try again."
+                detail="Failed to send reply email. Please try again."
             )
         
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        logger.error(f"Error sending email reply: {e}")
+        logger.error(f"Error sending reply email: {e}")
         logger.error(f"Error type: {type(e).__name__}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to send email reply: {str(e)}"
+            detail=f"Failed to send reply email: {str(e)}"
+        )
+
+@app.post("/api/contact")
+async def submit_contact_form(request: Request):
+    """
+    Handle contact form submissions with optional file uploads
+    Accepts FormData with form fields and files
+    """
+    try:
+        logger.info("Received contact form submission")
+        
+        # Check if database connection is available
+        if not is_db_connected or collection is None:
+            logger.error("Database connection not available")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database connection not available. Please check MongoDB configuration."
+            )
+        
+        # Parse FormData
+        form = await request.form()
+        logger.info(f"Form data received: {dict(form)}")
+        
+        # Extract form fields
+        form_data = {}
+        files_info = []
+        
+        for key, value in form.items():
+            if key == 'files':
+                # Handle file uploads
+                if hasattr(value, 'filename'):  # It's a file
+                    files_info.append({
+                        'filename': value.filename,
+                        'content_type': value.content_type,
+                        'size': len(await value.read()) if hasattr(value, 'read') else 0
+                    })
+                    # Reset file pointer if possible
+                    if hasattr(value, 'seek'):
+                        await value.seek(0)
+            else:
+                # Regular form field
+                form_data[key] = value
+        
+        # Validate that we have required data
+        required_fields = ['name', 'email', 'message']
+        missing_fields = [field for field in required_fields if not form_data.get(field)]
+        
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required fields: {', '.join(missing_fields)}"
+            )
+        
+        logger.info(f"Processed form data: {form_data}")
+        logger.info(f"Files info: {files_info}")
+        
+        # Add metadata to the submission
+        submission_data = {
+            **form_data,  # Include all form data as-is
+            "files_info": files_info,  # Store file information
+            "submitted_at": datetime.utcnow(),
+            "ip_address": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+            "status": "new"
+        }
+        
+        logger.info(f"Submission data to be stored: {submission_data}")
+        
+        # Store in MongoDB
+        try:
+            result = collection.insert_one(submission_data)
+            logger.info(f"Successfully stored submission with ID: {result.inserted_id}")
+        except PyMongoError as e:
+            logger.error(f"MongoDB error: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Database error occurred while storing submission"
+            )
+        
+        # Send notification email to company
+        try:
+            await send_notification_email(form_data)
+            logger.info("Notification email sent successfully")
+        except Exception as e:
+            logger.error(f"Failed to send notification email: {e}")
+            # Don't fail the entire request if email fails
+        
+        return {
+            "success": True,
+            "message": "Contact form submitted successfully",
+            "submission_id": str(result.inserted_id),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (they already have proper status codes)
+        raise
+    except PyMongoError as e:
+        logger.error(f"MongoDB error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Database error occurred while processing submission"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in submit_contact_form: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while processing your submission"
         )
 
 @app.get("/api/submissions")
