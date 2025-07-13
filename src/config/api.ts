@@ -1,11 +1,16 @@
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://mechgenz-backend.onrender.com';
 
 export const API_ENDPOINTS = {
-  CONTACT_SUBMIT: `${API_BASE_URL}/api/contact/submit`,
-  CONTACT_SUBMISSIONS: `${API_BASE_URL}/api/contact/submissions`,
-  CONTACT_STATS: `${API_BASE_URL}/api/contact/stats`,
+  CONTACT_SUBMIT: `${API_BASE_URL}/api/contact`,  // Fixed: removed /submit
+  CONTACT_SUBMISSIONS: `${API_BASE_URL}/api/submissions`,  // Fixed: correct endpoint
+  CONTACT_STATS: `${API_BASE_URL}/api/stats`,  // Fixed: correct endpoint
   HEALTH_CHECK: `${API_BASE_URL}/health`,
+  // Add admin endpoints
+  ADMIN_LOGIN: `${API_BASE_URL}/api/admin/login`,
+  ADMIN_PROFILE: `${API_BASE_URL}/api/admin/profile`,
+  SEND_REPLY: `${API_BASE_URL}/api/send-reply`,
+  WEBSITE_IMAGES: `${API_BASE_URL}/api/website-images`,
 } as const;
 
 export interface ContactFormData {
@@ -27,13 +32,10 @@ export interface ApiError {
 }
 
 // API utility functions
-export const submitContactForm = async (formData: ContactFormData): Promise<ContactResponse> => {
+export const submitContactForm = async (formData: FormData): Promise<ContactResponse> => {
   const response = await fetch(API_ENDPOINTS.CONTACT_SUBMIT, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(formData),
+    body: formData,  // Changed: send FormData for file uploads
   });
 
   const result = await response.json();
