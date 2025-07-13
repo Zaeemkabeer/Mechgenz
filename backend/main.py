@@ -1,11 +1,11 @@
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, PyMongoError
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 from bson import ObjectId
 from pathlib import Path
@@ -16,6 +16,8 @@ import resend
 import json
 import uuid
 import hashlib
+import shutil
+import base64
 
 # Load environment variables
 load_dotenv()
@@ -34,17 +36,23 @@ ADMIN_COLLECTION_NAME = "admin_users"
 
 # Resend configuration
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "re_G4hUh9oq_Dcaj4qoYtfWWv5saNvgG7ZEW")
-COMPANY_EMAIL = os.getenv("REPLY_FROM_EMAIL", "mechgenz4@gmail.com")
-VERIFIED_DOMAIN = os.getenv("VERIFIED_DOMAIN", None)  # Set this to your verified domain
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "mechgenz4@gmail.com")
+COMPANY_EMAIL = os.getenv("COMPANY_EMAIL", "info@mechgenz.com")
+VERIFIED_DOMAIN = os.getenv("VERIFIED_DOMAIN", None)
+
+# Email notification list - both admin Gmail and company Outlook
+NOTIFICATION_EMAILS = [ADMIN_EMAIL, COMPANY_EMAIL]
 
 # Initialize Resend
 resend.api_key = RESEND_API_KEY
 
 # File upload configuration
-UPLOAD_DIR = Path("images")
+UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+IMAGES_DIR = Path("images")
+IMAGES_DIR.mkdir(exist_ok=True)
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".doc", ".docx", ".txt"}
 
 # Global MongoDB client
 mongodb_client = None
@@ -78,7 +86,7 @@ def initialize_gallery_data():
             
         logger.info("Initializing gallery collection with default images...")
         
-        # Default gallery images configuration (10 images with 9 categories)
+        # Default gallery images configuration (11 images with 9 categories)
         default_images = [
             {
                 "id": "hero_main_banner",
@@ -265,7 +273,7 @@ def initialize_default_admin():
         default_admin = {
             "name": "Mechgenz",
             "email": "mechgenz4@gmail.com",
-            "password": hash_password("mechgenz4"),  # Updated default password
+            "password": hash_password("mechgenz4"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -331,11 +339,24 @@ def close_mongodb_connection():
         is_db_connected = False
         logger.info("MongoDB connection closed")
 
+def format_file_size(bytes_size):
+    """Format file size in human readable format"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes_size < 1024.0:
+            return f"{bytes_size:.1f} {unit}"
+        bytes_size /= 1024.0
+    return f"{bytes_size:.1f} TB"
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
     # Startup
     logger.info("Starting up MECHGENZ Contact Form API...")
+    logger.info(f"📧 Email configuration:")
+    logger.info(f"   Admin Email: {ADMIN_EMAIL}")
+    logger.info(f"   Company Email: {COMPANY_EMAIL}")
+    logger.info(f"   Notification Recipients: {', '.join(NOTIFICATION_EMAILS)}")
+    
     success = connect_to_mongodb()
     if not success:
         logger.warning("Failed to initialize MongoDB connection - API will run but form submissions will fail")
@@ -346,6 +367,8 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("✅ Gallery management system ready")
         logger.info("✅ Admin system ready")
+        logger.info("✅ Dual email notification system ready")
+        logger.info("✅ File upload system ready")
     
     yield
     
@@ -355,18 +378,19 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI app with lifespan
 app = FastAPI(
     title="MECHGENZ Contact Form API",
-    description="Backend API for handling contact form submissions and gallery management",
+    description="Backend API for handling contact form submissions with file uploads and gallery management",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Mount static files for image serving
+# Mount static files for image and upload serving
 app.mount("/images", StaticFiles(directory="images"), name="images")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Get CORS origins from environment variable
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
 
-# CORS middleware configuration - Updated for admin panel compatibility
+# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -397,7 +421,12 @@ async def root():
         "message": "MECHGENZ Contact Form API is running",
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "database_connected": is_db_connected
+        "database_connected": is_db_connected,
+        "email_config": {
+            "admin_email": ADMIN_EMAIL,
+            "company_email": COMPANY_EMAIL,
+            "notification_recipients": NOTIFICATION_EMAILS
+        }
     }
 
 @app.get("/health")
@@ -416,7 +445,12 @@ async def health_check():
             "database": db_status,
             "timestamp": datetime.utcnow().isoformat(),
             "mongodb_configured": MONGODB_CONNECTION_STRING is not None,
-            "resend_configured": RESEND_API_KEY is not None
+            "resend_configured": RESEND_API_KEY is not None,
+            "email_setup": {
+                "admin_email": ADMIN_EMAIL,
+                "company_email": COMPANY_EMAIL,
+                "dual_notifications": True
+            }
         }
     except Exception as e:
         return JSONResponse(
@@ -627,635 +661,149 @@ async def admin_login(request: Request):
         )
 
 # ============================================================================
-# DEBUG ENDPOINTS FOR ADMIN
+# FILE UPLOAD AND SERVING ENDPOINTS
 # ============================================================================
 
-@app.get("/api/debug/admin")
-async def debug_admin():
-    """Debug admin data and password hashing"""
+@app.get("/api/submissions/{submission_id}/file/{filename}")
+async def download_file(submission_id: str, filename: str):
+    """Download a file attached to a submission"""
     try:
-        if not is_db_connected or admin_collection is None:
-            return {"error": "Database not connected"}
-        
-        # Get admin data
-        admin = admin_collection.find_one({})
-        if not admin:
-            return {"error": "No admin found"}
-        
-        # Remove _id for cleaner output
-        admin_data = dict(admin)
-        admin_data.pop("_id", None)
-        
-        # Test password hashing
-        test_passwords = ["admin123", "mechgenz4"]
-        password_tests = {}
-        
-        stored_password = admin.get("password", "")
-        
-        for test_pwd in test_passwords:
-            hashed = hash_password(test_pwd)
-            matches = verify_password(test_pwd, stored_password)
-            password_tests[test_pwd] = {
-                "hashed": hashed,
-                "matches_stored": matches
-            }
-        
-        return {
-            "admin_data": admin_data,
-            "stored_password": stored_password,
-            "password_tests": password_tests,
-            "admin_collection_count": admin_collection.count_documents({})
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/api/debug/reset-admin-password")
-async def reset_admin_password():
-    """Reset admin password to 'mechgenz4'"""
-    try:
-        if not is_db_connected or admin_collection is None:
-            return {"error": "Database not connected"}
-        
-        # Get admin
-        admin = admin_collection.find_one({})
-        if not admin:
-            return {"error": "No admin found"}
-        
-        # Reset password to mechgenz4
-        new_password = "mechgenz4"
-        hashed_password = hash_password(new_password)
-        
-        # Update password
-        result = admin_collection.update_one(
-            {"_id": admin["_id"]},
-            {
-                "$set": {
-                    "email": "mechgenz4@gmail.com",
-                    "name": "Mechgenz",
-                    "password": hashed_password,
-                    "updated_at": datetime.utcnow()
-                }
-            }
-        )
-        
-        if result.modified_count > 0:
-            return {
-                "success": True,
-                "message": "Admin credentials set to mechgenz4@gmail.com / mechgenz4",
-                "email": "mechgenz4@gmail.com",
-                "new_password": new_password,
-                "hashed_password": hashed_password
-            }
-        else:
-            return {"error": "Failed to update password"}
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-# ============================================================================
-# DEBUG ENDPOINTS FOR GALLERY
-# ============================================================================
-
-@app.get("/api/debug/gallery")
-async def debug_gallery():
-    """Debug endpoint to check gallery data"""
-    try:
-        if not is_db_connected or gallery_collection is None:
-            return {"error": "Database not connected", "gallery_collection": gallery_collection is None}
-        
-        # Get all images from database
-        cursor = gallery_collection.find({})
-        images = []
-        
-        for doc in cursor:
-            doc.pop("_id", None)  # Remove MongoDB _id
-            if "created_at" in doc and hasattr(doc["created_at"], 'isoformat'):
-                doc["created_at"] = doc["created_at"].isoformat()
-            if "updated_at" in doc and hasattr(doc["updated_at"], 'isoformat'):
-                doc["updated_at"] = doc["updated_at"].isoformat()
-            images.append(doc)
-        
-        return {
-            "images_count": len(images),
-            "images": images,
-            "database_connected": is_db_connected,
-            "collection_name": GALLERY_COLLECTION_NAME
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/api/debug/reinitialize-gallery")
-async def reinitialize_gallery():
-    """Force reinitialize gallery data"""
-    try:
-        if gallery_collection is None:
-            return {"error": "Gallery collection not available"}
-        
-        # Drop existing data
-        gallery_collection.delete_many({})
-        logger.info("Cleared existing gallery data")
-        
-        # Reinitialize
-        success = initialize_gallery_data()
-        
-        return {
-            "success": success,
-            "message": "Gallery reinitialized" if success else "Failed to reinitialize"
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/api/debug/fix-gallery-ids")
-async def fix_gallery_ids():
-    """Fix missing id fields in gallery documents"""
-    try:
-        if gallery_collection is None:
-            return {"error": "Gallery collection not available"}
-        
-        # Get all documents
-        cursor = gallery_collection.find({})
-        fixed_count = 0
-        
-        for doc in cursor:
-            # Check if document is missing 'id' field
-            if 'id' not in doc:
-                # Generate an ID from the name or use a default pattern
-                name = doc.get('name', 'unknown')
-                # Create a simple ID from the name
-                new_id = name.lower().replace(' ', '_').replace('-', '_')
-                
-                # Make sure the ID is unique by checking if it already exists
-                existing = gallery_collection.find_one({"id": new_id})
-                counter = 1
-                original_id = new_id
-                while existing and str(existing.get("_id")) != str(doc["_id"]):
-                    new_id = f"{original_id}_{counter}"
-                    existing = gallery_collection.find_one({"id": new_id})
-                    counter += 1
-                
-                # Update the document to add the id field
-                gallery_collection.update_one(
-                    {"_id": doc["_id"]},
-                    {"$set": {"id": new_id}}
-                )
-                fixed_count += 1
-                logger.info(f"Fixed document: added id '{new_id}' for '{name}'")
-        
-        return {
-            "success": True,
-            "message": f"Fixed {fixed_count} documents by adding missing 'id' fields",
-            "fixed_count": fixed_count
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/api/debug/collections")
-async def debug_collections():
-    """Check what collections exist and their document counts"""
-    try:
-        if not is_db_connected or database is None:
-            return {"error": "Database not connected"}
-        
-        # List all collections
-        collections = database.list_collection_names()
-        
-        collection_info = {}
-        for coll_name in collections:
-            coll = database[coll_name]
-            count = coll.count_documents({})
-            
-            # Get a sample document if any exist
-            sample = None
-            if count > 0:
-                sample_doc = coll.find_one()
-                if sample_doc:
-                    sample_doc.pop("_id", None)
-                    sample = sample_doc
-            
-            collection_info[coll_name] = {
-                "count": count,
-                "sample": sample
-            }
-        
-        return {
-            "collections": collection_info,
-            "gallery_collection_name": GALLERY_COLLECTION_NAME,
-            "admin_collection_name": ADMIN_COLLECTION_NAME,
-            "is_db_connected": is_db_connected
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-# ============================================================================
-# GALLERY MANAGEMENT ENDPOINTS
-# ============================================================================
-
-@app.get("/api/website-images")
-async def get_website_images():
-    """Get all website images in format expected by admin panels"""
-    try:
-        if not is_db_connected or gallery_collection is None:
-            logger.warning("Database not connected, returning empty gallery")
-            return {
-                "success": True,
-                "images": {},
-                "total_count": 0
-            }
-        
-        logger.info("Fetching images from gallery collection...")
-        
-        # Fetch all images from database
-        cursor = gallery_collection.find({})
-        images = {}
-        doc_count = 0
-        processed_count = 0
-        
-        for doc in cursor:
-            doc_count += 1
-            logger.info(f"Processing document {doc_count}: {doc.get('id', 'NO_ID')}")
-            
-            # Check if the document has 'id' field
-            image_id = doc.get("id")
-            if not image_id:
-                logger.warning(f"Document missing 'id' field, skipping: {list(doc.keys())}")
-                continue
-            
-            try:
-                # Convert MongoDB document to the expected format
-                images[image_id] = {
-                    "id": image_id,
-                    "name": doc.get("name", "Unknown"),
-                    "description": doc.get("description", "No description"),
-                    "current_url": doc.get("current_url", ""),
-                    "default_url": doc.get("default_url", ""),
-                    "locations": doc.get("locations", []),
-                    "recommended_size": doc.get("recommended_size", ""),
-                    "category": doc.get("category", "other"),
-                    "updated_at": datetime.utcnow().isoformat()  # Simplified for now
-                }
-                processed_count += 1
-                logger.info(f"Successfully processed image: {image_id}")
-                
-            except Exception as doc_error:
-                logger.error(f"Error processing document {image_id}: {doc_error}")
-                continue
-        
-        logger.info(f"Processed {processed_count} out of {doc_count} documents")
-        logger.info(f"Final images dict has {len(images)} items")
-        
-        return {
-            "success": True,
-            "images": images,
-            "total_count": len(images)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching website images: {e}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
-        return {
-            "success": False,
-            "images": {},
-            "total_count": 0,
-            "error": str(e)
-        }
-
-@app.get("/api/website-images/categories")
-async def get_image_categories():
-    """Get all unique image categories"""
-    try:
-        if not is_db_connected or gallery_collection is None:
-            return {
-                "success": True,
-                "categories": ["hero", "about", "services", "portfolio", "contact", "team", "branding", "testimonials", "trading"]
-            }
-        
-        # Get unique categories from database
-        categories = gallery_collection.distinct("category")
-        categories.sort()
-        
-        logger.info(f"Retrieved {len(categories)} image categories")
-        
-        return {
-            "success": True,
-            "categories": categories
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching image categories: {e}")
-        return {
-            "success": True,
-            "categories": ["hero", "about", "services", "portfolio", "contact", "team", "branding", "testimonials", "trading"]
-        }
-
-@app.post("/api/website-images/{image_id}/upload")
-async def upload_image(image_id: str, file: UploadFile = File(...)):
-    """Upload a new image for a specific image slot"""
-    try:
-        if not is_db_connected or gallery_collection is None:
+        if not is_db_connected or collection is None:
             raise HTTPException(
                 status_code=503,
                 detail="Database connection not available"
             )
         
-        # Check if image exists
-        existing_image = gallery_collection.find_one({"id": image_id})
-        if not existing_image:
+        # Verify submission exists and contains this file
+        submission = collection.find_one({"_id": ObjectId(submission_id)})
+        if not submission:
             raise HTTPException(
                 status_code=404,
-                detail=f"Image with ID '{image_id}' not found"
+                detail="Submission not found"
             )
         
-        # Validate file
-        if not file.filename:
+        # Check if file exists in submission
+        uploaded_files = submission.get("uploaded_files", [])
+        file_info = None
+        for file_data in uploaded_files:
+            if file_data.get("saved_name") == filename:
+                file_info = file_data
+                break
+        
+        if not file_info:
             raise HTTPException(
-                status_code=400,
-                detail="No file provided"
+                status_code=404,
+                detail="File not found in submission"
             )
         
-        # Check file extension
-        file_extension = Path(file.filename).suffix.lower()
-        if file_extension not in ALLOWED_EXTENSIONS:
+        # Check if physical file exists
+        file_path = UPLOAD_DIR / filename
+        if not file_path.exists():
             raise HTTPException(
-                status_code=400,
-                detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+                status_code=404,
+                detail="Physical file not found"
             )
         
-        # Read file content to check size
-        file_content = await file.read()
-        if len(file_content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024*1024)}MB"
-            )
-        
-        # Generate unique filename
-        unique_filename = f"{image_id}_{uuid.uuid4().hex[:8]}{file_extension}"
-        file_path = UPLOAD_DIR / unique_filename
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
-        
-        # Update database with new URL
-        new_url = f"/images/{unique_filename}"
-        update_result = gallery_collection.update_one(
-            {"id": image_id},
-            {
-                "$set": {
-                    "current_url": new_url,
-                    "updated_at": datetime.utcnow()
-                }
-            }
+        # Return file
+        return FileResponse(
+            path=file_path,
+            filename=file_info.get("original_name", filename),
+            media_type=file_info.get("content_type", "application/octet-stream")
         )
-        
-        if update_result.modified_count == 0:
-            # Clean up uploaded file if database update failed
-            if file_path.exists():
-                file_path.unlink()
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to update image in database"
-            )
-        
-        logger.info(f"Successfully uploaded image for {image_id}: {unique_filename}")
-        
-        return {
-            "success": True,
-            "message": "Image uploaded successfully",
-            "image_id": image_id,
-            "new_url": new_url,
-            "filename": unique_filename
-        }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error uploading image: {e}")
+        logger.error(f"Error downloading file: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to upload image"
-        )
-
-@app.put("/api/website-images/{image_id}")
-async def update_image_metadata(image_id: str, request: Request):
-    """Update image metadata (name and description)"""
-    try:
-        if not is_db_connected or gallery_collection is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Database connection not available"
-            )
-        
-        # Get request data
-        data = await request.json()
-        name = data.get("name", "").strip()
-        description = data.get("description", "").strip()
-        
-        if not name:
-            raise HTTPException(
-                status_code=400,
-                detail="Name is required"
-            )
-        
-        # Update image metadata
-        update_result = gallery_collection.update_one(
-            {"id": image_id},
-            {
-                "$set": {
-                    "name": name,
-                    "description": description,
-                    "updated_at": datetime.utcnow()
-                }
-            }
-        )
-        
-        if update_result.matched_count == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Image with ID '{image_id}' not found"
-            )
-        
-        logger.info(f"Updated metadata for image {image_id}")
-        
-        return {
-            "success": True,
-            "message": "Image metadata updated successfully",
-            "image_id": image_id
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating image metadata: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to update image metadata"
-        )
-
-@app.delete("/api/website-images/{image_id}/reset")
-async def reset_image_to_default(image_id: str):
-    """Reset image to its default URL"""
-    try:
-        if not is_db_connected or gallery_collection is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Database connection not available"
-            )
-        
-        # Get current image data
-        image_doc = gallery_collection.find_one({"id": image_id})
-        if not image_doc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Image with ID '{image_id}' not found"
-            )
-        
-        # Delete current uploaded file if it exists
-        current_url = image_doc.get("current_url", "")
-        if current_url.startswith("/images/"):
-            file_path = UPLOAD_DIR / current_url.replace("/images/", "")
-            if file_path.exists():
-                file_path.unlink()
-                logger.info(f"Deleted uploaded file: {file_path}")
-        
-        # Reset to default URL
-        default_url = image_doc["default_url"]
-        update_result = gallery_collection.update_one(
-            {"id": image_id},
-            {
-                "$set": {
-                    "current_url": default_url,
-                    "updated_at": datetime.utcnow()
-                }
-            }
-        )
-        
-        if update_result.modified_count == 0:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to reset image"
-            )
-        
-        logger.info(f"Reset image {image_id} to default")
-        
-        return {
-            "success": True,
-            "message": "Image reset to default successfully",
-            "image_id": image_id,
-            "default_url": default_url
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error resetting image: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to reset image"
-        )
-
-@app.delete("/api/website-images/{image_id}")
-async def delete_image(image_id: str, delete_type: str = "image_only"):
-    """Delete image (either just the uploaded file or the entire configuration)"""
-    try:
-        if not is_db_connected or gallery_collection is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Database connection not available"
-            )
-        
-        # Validate delete_type
-        if delete_type not in ["image_only", "complete"]:
-            raise HTTPException(
-                status_code=400,
-                detail="delete_type must be either 'image_only' or 'complete'"
-            )
-        
-        # Get current image data
-        image_doc = gallery_collection.find_one({"id": image_id})
-        if not image_doc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Image with ID '{image_id}' not found"
-            )
-        
-        # Delete uploaded file if it exists
-        current_url = image_doc.get("current_url", "")
-        if current_url.startswith("/images/"):
-            file_path = UPLOAD_DIR / current_url.replace("/images/", "")
-            if file_path.exists():
-                file_path.unlink()
-                logger.info(f"Deleted uploaded file: {file_path}")
-        
-        if delete_type == "image_only":
-            # Reset to default URL
-            default_url = image_doc["default_url"]
-            update_result = gallery_collection.update_one(
-                {"id": image_id},
-                {
-                    "$set": {
-                        "current_url": default_url,
-                        "updated_at": datetime.utcnow()
-                    }
-                }
-            )
-            
-            if update_result.modified_count == 0:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to reset image"
-                )
-            
-            logger.info(f"Deleted custom image for {image_id}, reset to default")
-            
-            return {
-                "success": True,
-                "message": "Custom image deleted, reset to default",
-                "image_id": image_id,
-                "default_url": default_url
-            }
-        
-        else:  # complete deletion
-            # Remove entire image configuration
-            delete_result = gallery_collection.delete_one({"id": image_id})
-            
-            if delete_result.deleted_count == 0:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to delete image configuration"
-                )
-            
-            logger.info(f"Completely deleted image configuration for {image_id}")
-            
-            return {
-                "success": True,
-                "message": "Image configuration deleted completely",
-                "image_id": image_id
-            }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting image: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to delete image"
+            detail="Failed to download file"
         )
 
 # ============================================================================
-# EXISTING CONTACT FORM ENDPOINTS (PRESERVED)
+# CONTACT FORM ENDPOINTS WITH FILE UPLOAD SUPPORT
 # ============================================================================
 
-async def send_notification_email(form_data):
-    """Send notification email to company when a new contact form is submitted"""
+async def send_notification_email(form_data, uploaded_files=None):
+    """Send notification email to both admin and company when a new contact form is submitted"""
     try:
-        # Create email content for company notification
+        # Create attachments list if files were uploaded
+        attachments = []
+        attachment_html = ""
+        
+        if uploaded_files and len(uploaded_files) > 0:
+            attachment_html = f"""
+            <div style="background-color: #e8f5e8; padding: 20px; border-left: 4px solid #4caf50; margin: 20px 0; border-radius: 5px;">
+                <h3 style="color: #2e7d32; margin-top: 0; display: flex; align-items: center;">
+                    <span style="font-size: 20px; margin-right: 8px;">📎</span>
+                    Attachments ({len(uploaded_files)})
+                </h3>
+                <p style="color: #2e7d32; margin-bottom: 15px;">The following files have been attached to this inquiry:</p>
+                <div style="background-color: white; padding: 15px; border-radius: 5px; border: 1px solid #c8e6c9;">
+            """
+            
+            for file_info in uploaded_files:
+                file_path = UPLOAD_DIR / file_info["saved_name"]
+                if file_path.exists():
+                    file_size = file_info["file_size"]
+                    
+                    # Only attach files smaller than 5MB to avoid email size limits
+                    if file_size < 5 * 1024 * 1024:  # 5MB limit
+                        try:
+                            # Read file content for attachment
+                            with open(file_path, "rb") as f:
+                                file_content = f.read()
+                            
+                            # Encode file content as base64 for Resend
+                            file_content_b64 = base64.b64encode(file_content).decode('utf-8')
+                            
+                            # Add to Resend attachments
+                            attachments.append({
+                                "filename": file_info["original_name"],
+                                "content": file_content_b64,
+                                "content_type": file_info.get("content_type", "application/octet-stream")
+                            })
+                            
+                            # Add to HTML display
+                            attachment_html += f"""
+                            <div style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; background-color: #f8f9fa; border-radius: 4px;">
+                                <span style="font-size: 16px; margin-right: 10px;">📄</span>
+                                <div>
+                                    <strong style="color: #2e7d32;">{file_info["original_name"]}</strong>
+                                    <br><small style="color: #666;">({format_file_size(file_info["file_size"])}) - Attached</small>
+                                </div>
+                            </div>
+                            """
+                        except Exception as file_error:
+                            logger.error(f"Error reading file {file_info['saved_name']}: {file_error}")
+                            # Add to HTML display as link instead
+                            attachment_html += f"""
+                            <div style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; background-color: #fff3cd; border-radius: 4px;">
+                                <span style="font-size: 16px; margin-right: 10px;">📄</span>
+                                <div>
+                                    <strong style="color: #856404;">{file_info["original_name"]}</strong>
+                                    <br><small style="color: #666;">({format_file_size(file_info["file_size"])}) - Available in admin panel</small>
+                                </div>
+                            </div>
+                            """
+                    else:
+                        # File too large - show as link only
+                        attachment_html += f"""
+                        <div style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; background-color: #fff3cd; border-radius: 4px;">
+                            <span style="font-size: 16px; margin-right: 10px;">📄</span>
+                            <div>
+                                <strong style="color: #856404;">{file_info["original_name"]}</strong>
+                                <br><small style="color: #666;">({format_file_size(file_info["file_size"])}) - Too large for email, available in admin panel</small>
+                            </div>
+                        </div>
+                        """
+            
+            attachment_html += """
+                </div>
+            </div>
+            """
+        
+        # Create email content for notification (matching the design from the image)
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -1270,75 +818,114 @@ async def send_notification_email(form_data):
                     color: #333;
                     max-width: 600px;
                     margin: 0 auto;
-                    padding: 20px;
+                    padding: 0;
                     background-color: #f4f4f4;
                 }}
                 .email-container {{
                     background-color: #ffffff;
-                    border-radius: 10px;
-                    padding: 30px;
+                    margin: 0;
+                    padding: 0;
                     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 }}
                 .header {{
+                    background: linear-gradient(135deg, #ff5722 0%, #ff7043 100%);
+                    color: white;
+                    padding: 30px;
                     text-align: center;
-                    border-bottom: 3px solid #ff5722;
-                    padding-bottom: 20px;
-                    margin-bottom: 30px;
                 }}
                 .logo {{
                     font-size: 28px;
                     font-weight: bold;
-                    color: #ff5722;
                     letter-spacing: 2px;
+                    margin-bottom: 5px;
                 }}
                 .tagline {{
                     font-size: 12px;
-                    color: #666;
                     letter-spacing: 3px;
-                    margin-top: 5px;
+                    opacity: 0.9;
                 }}
                 .alert {{
-                    background-color: #ff5722;
-                    color: white;
+                    background-color: #fff3e0;
+                    color: #ff5722;
+                    padding: 20px;
+                    margin: 0;
+                    text-align: center;
+                    font-weight: bold;
+                    border-left: 4px solid #ff5722;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }}
+                .alert-icon {{
+                    font-size: 20px;
+                    margin-right: 10px;
+                }}
+                .content {{
+                    padding: 30px;
+                }}
+                .info-text {{
+                    color: #666;
+                    margin-bottom: 20px;
+                    font-size: 14px;
+                }}
+                .contact-section {{
+                    background-color: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                }}
+                .contact-title {{
+                    color: #ff5722;
+                    font-size: 18px;
+                    font-weight: bold;
+                    margin-bottom: 15px;
+                    display: flex;
+                    align-items: center;
+                }}
+                .contact-title-icon {{
+                    margin-right: 8px;
+                    font-size: 20px;
+                }}
+                .contact-row {{
+                    display: flex;
+                    margin-bottom: 12px;
+                    align-items: flex-start;
+                }}
+                .contact-label {{
+                    font-weight: bold;
+                    color: #333;
+                    min-width: 80px;
+                    margin-right: 10px;
+                }}
+                .contact-value {{
+                    color: #666;
+                    flex: 1;
+                }}
+                .message-section {{
+                    background-color: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                }}
+                .message-title {{
+                    color: #ff5722;
+                    font-size: 18px;
+                    font-weight: bold;
+                    margin-bottom: 15px;
+                    display: flex;
+                    align-items: center;
+                }}
+                .message-title-icon {{
+                    margin-right: 8px;
+                    font-size: 20px;
+                }}
+                .message-content {{
+                    background-color: white;
                     padding: 15px;
                     border-radius: 5px;
-                    margin: 20px 0;
-                    text-align: center;
-                    font-weight: bold;
-                }}
-                .form-data {{
-                    background-color: #f9f9f9;
-                    padding: 20px;
                     border-left: 4px solid #ff5722;
-                    margin: 20px 0;
-                    border-radius: 5px;
-                }}
-                .field {{
-                    margin-bottom: 15px;
-                    padding-bottom: 15px;
-                    border-bottom: 1px solid #eee;
-                }}
-                .field:last-child {{
-                    border-bottom: none;
-                    margin-bottom: 0;
-                    padding-bottom: 0;
-                }}
-                .field-label {{
-                    font-weight: bold;
-                    color: #ff5722;
-                    margin-bottom: 5px;
-                }}
-                .field-value {{
-                    color: #333;
                     white-space: pre-wrap;
-                }}
-                .footer {{
-                    margin-top: 30px;
-                    padding-top: 20px;
-                    border-top: 1px solid #eee;
-                    text-align: center;
-                    color: #666;
-                    font-size: 14px;
+                    color: #333;
                 }}
                 .action-buttons {{
                     text-align: center;
@@ -1346,18 +933,30 @@ async def send_notification_email(form_data):
                 }}
                 .btn {{
                     display: inline-block;
-                    padding: 12px 20px;
-                    margin: 5px;
+                    padding: 12px 24px;
+                    margin: 8px;
                     text-decoration: none;
-                    border-radius: 5px;
+                    border-radius: 6px;
                     font-weight: bold;
                     color: white;
+                    font-size: 14px;
                 }}
                 .btn-primary {{
                     background-color: #ff5722;
                 }}
                 .btn-secondary {{
-                    background-color: #2c3e50;
+                    background-color: #2196f3;
+                }}
+                .footer {{
+                    background-color: #37474f;
+                    color: white;
+                    padding: 20px;
+                    text-align: center;
+                    font-size: 12px;
+                    line-height: 1.4;
+                }}
+                .footer p {{
+                    margin: 5px 0;
                 }}
             </style>
         </head>
@@ -1369,76 +968,112 @@ async def send_notification_email(form_data):
                 </div>
                 
                 <div class="alert">
-                    🔔 NEW CONTACT FORM SUBMISSION
+                    <span class="alert-icon">🔔</span>
+                    New Contact Form Submission
                 </div>
                 
-                <p>A new contact form has been submitted on the MECHGENZ website. Here are the details:</p>
-                
-                <div class="form-data">
-                    <div class="field">
-                        <div class="field-label">Full Name:</div>
-                        <div class="field-value">{form_data.get('name', 'Not provided')}</div>
+                <div class="content">
+                    <p class="info-text">You have received a new inquiry through the website contact form.</p>
+                    
+                    <div class="contact-section">
+                        <div class="contact-title">
+                            <span class="contact-title-icon">📋</span>
+                            Contact Information
+                        </div>
+                        
+                        <div class="contact-row">
+                            <div class="contact-label">Name:</div>
+                            <div class="contact-value">{form_data.get('name', 'Not provided')}</div>
+                        </div>
+                        
+                        <div class="contact-row">
+                            <div class="contact-label">Email:</div>
+                            <div class="contact-value">{form_data.get('email', 'Not provided')}</div>
+                        </div>
+                        
+                        <div class="contact-row">
+                            <div class="contact-label">Phone:</div>
+                            <div class="contact-value">{form_data.get('phone', 'Not provided')}</div>
+                        </div>
+                        
+                        <div class="contact-row">
+                            <div class="contact-label">Submitted:</div>
+                            <div class="contact-value">{datetime.utcnow().strftime('%B %d, %Y at %I:%M %p')} UTC</div>
+                        </div>
                     </div>
                     
-                    <div class="field">
-                        <div class="field-label">Phone Number:</div>
-                        <div class="field-value">{form_data.get('phone', 'Not provided')}</div>
+                    <div class="message-section">
+                        <div class="message-title">
+                            <span class="message-title-icon">💬</span>
+                            Message
+                        </div>
+                        <div class="message-content">{form_data.get('message', 'Not provided')}</div>
                     </div>
                     
-                    <div class="field">
-                        <div class="field-label">Email Address:</div>
-                        <div class="field-value">{form_data.get('email', 'Not provided')}</div>
-                    </div>
+                    {attachment_html}
                     
-                    <div class="field">
-                        <div class="field-label">Message:</div>
-                        <div class="field-value">{form_data.get('message', 'Not provided')}</div>
+                    <div class="action-buttons">
+                        <a href="http://localhost:5173/admin/user-inquiries" class="btn btn-primary">
+                            🖥️ View in Admin Panel
+                        </a>
+                        <a href="mailto:{form_data.get('email', '')}?subject=Re: Your inquiry to MECHGENZ" class="btn btn-secondary">
+                            ↩️ Reply Directly
+                        </a>
                     </div>
                 </div>
-                
-                <p><strong>Submitted at:</strong> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-                
-                <div class="action-buttons">
-                    <a href="http://localhost:5173/admin/user-inquiries" class="btn btn-primary">
-                        🖥️ View in Admin Panel
-                    </a>
-                    <a href="mailto:{form_data.get('email', '')}?subject=Re: Your inquiry to MECHGENZ" class="btn btn-secondary">
-                        ↩️ Reply Directly
-                    </a>
-                </div>
-                
-                <p>Please respond to this inquiry as soon as possible.</p>
                 
                 <div class="footer">
-                    <p>This notification was sent automatically from the MECHGENZ website contact form.<br>
-                    © 2024 MECHGENZ W.L.L. All Rights Reserved.</p>
+                    <p>This is an automated notification from your MECHGENZ website contact form.</p>
+                    <p>© 2024 MECHGENZ W.L.L. All Rights Reserved.</p>
                 </div>
             </div>
         </body>
         </html>
         """
         
-        # Send notification email to company - USING VERIFIED DOMAIN
+        # Send notification email to BOTH admin Gmail and company Outlook
         params = {
-            "from": "MECHGENZ Website <info@mechgenz.com>",  # ✅ Using verified domain
-            "to": [COMPANY_EMAIL],  # Admin will receive at mechgenz4@gmail.com
+            "from": "MECHGENZ Website <info@mechgenz.com>",
+            "to": NOTIFICATION_EMAILS,
             "subject": f"🔔 New Contact Form Submission from {form_data.get('name', 'Unknown')}",
             "html": html_content,
-            "reply_to": form_data.get('email', COMPANY_EMAIL)  # User can reply back
+            "reply_to": form_data.get('email', COMPANY_EMAIL)
         }
         
+        # Add attachments if any (and not too large)
+        if attachments:
+            params["attachments"] = attachments
+        
+        logger.info(f"📧 Sending notification email to: {', '.join(NOTIFICATION_EMAILS)}")
+        if attachments:
+            logger.info(f"📎 Including {len(attachments)} attachments (files under 5MB)")
+        elif uploaded_files:
+            logger.info(f"📎 {len(uploaded_files)} files uploaded but not attached (too large or error)")
+        
         email_response = resend.Emails.send(params)
-        logger.info(f"Notification email sent successfully. Resend ID: {email_response.get('id', 'Unknown')}")
+        logger.info(f"✅ Dual notification email sent successfully!")
+        logger.info(f"   - Admin Gmail: {ADMIN_EMAIL}")
+        logger.info(f"   - Company Outlook: {COMPANY_EMAIL}")
+        logger.info(f"   - Resend ID: {email_response.get('id', 'Unknown')}")
+        
+        return {
+            "success": True,
+            "sent_to": NOTIFICATION_EMAILS,
+            "resend_id": email_response.get('id'),
+            "attachments_included": len(attachments) if attachments else 0
+        }
         
     except Exception as e:
-        logger.error(f"Failed to send notification email: {e}")
-        # Don't raise the exception - we don't want email failures to break form submission
+        logger.error(f"❌ Failed to send dual notification email: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "attempted_recipients": NOTIFICATION_EMAILS
+        }
 
 @app.post("/api/send-reply")
 async def send_reply_email(request: Request):
-    """
-    Send email reply directly to user from admin
-    """
+    """Send email reply directly to user from admin"""
     try:
         logger.info("Received email reply request")
         
@@ -1631,16 +1266,16 @@ async def send_reply_email(request: Request):
         © 2024 MECHGENZ W.L.L. All Rights Reserved.
         """
         
-        # Send email directly to the user using Resend - USING VERIFIED DOMAIN
+        # Send email directly to the user using Resend
         logger.info(f"Sending reply email directly to user {to_name} ({to_email}) using Resend API")
         
         params = {
-            "from": "MECHGENZ <info@mechgenz.com>",  # ✅ Using verified domain
-            "to": [to_email],  # Send directly to the user
+            "from": "MECHGENZ <info@mechgenz.com>",
+            "to": [to_email],
             "subject": f"Reply from MECHGENZ - Your Inquiry",
             "html": html_content,
             "text": text_content,
-            "reply_to": COMPANY_EMAIL  # User can reply back to mechgenz4@gmail.com
+            "reply_to": COMPANY_EMAIL
         }
         
         email_response = resend.Emails.send(params)
@@ -1664,7 +1299,6 @@ async def send_reply_email(request: Request):
             )
         
     except HTTPException:
-        # Re-raise HTTP exceptions
         raise
     except Exception as e:
         logger.error(f"Error sending reply email: {e}")
@@ -1675,13 +1309,16 @@ async def send_reply_email(request: Request):
         )
 
 @app.post("/api/contact")
-async def submit_contact_form(request: Request):
-    """
-    Handle contact form submissions with optional file uploads
-    Accepts FormData with form fields and files
-    """
+async def submit_contact_form(
+    name: str = Form(...),
+    email: str = Form(...),
+    phone: str = Form(None),
+    message: str = Form(...),
+    files: List[UploadFile] = File(None)
+):
+    """Handle contact form submissions with optional file uploads"""
     try:
-        logger.info("Received contact form submission")
+        logger.info("📝 Received contact form submission")
         
         # Check if database connection is available
         if not is_db_connected or collection is None:
@@ -1691,50 +1328,77 @@ async def submit_contact_form(request: Request):
                 detail="Database connection not available. Please check MongoDB configuration."
             )
         
-        # Parse FormData
-        form = await request.form()
-        logger.info(f"Form data received: {dict(form)}")
+        # Validate required fields
+        if not name.strip():
+            raise HTTPException(status_code=400, detail="Name is required")
+        if not email.strip():
+            raise HTTPException(status_code=400, detail="Email is required")
+        if not message.strip():
+            raise HTTPException(status_code=400, detail="Message is required")
         
-        # Extract form fields
-        form_data = {}
-        files_info = []
+        # Prepare form data
+        form_data = {
+            "name": name.strip(),
+            "email": email.strip(),
+            "phone": phone.strip() if phone else "",
+            "message": message.strip()
+        }
         
-        for key, value in form.items():
-            if key == 'files':
-                # Handle file uploads
-                if hasattr(value, 'filename'):  # It's a file
-                    files_info.append({
-                        'filename': value.filename,
-                        'content_type': value.content_type,
-                        'size': len(await value.read()) if hasattr(value, 'read') else 0
-                    })
-                    # Reset file pointer if possible
-                    if hasattr(value, 'seek'):
-                        await value.seek(0)
-            else:
-                # Regular form field
-                form_data[key] = value
+        logger.info(f"Form data: {form_data}")
         
-        # Validate that we have required data
-        required_fields = ['name', 'email', 'message']
-        missing_fields = [field for field in required_fields if not form_data.get(field)]
+        # Handle file uploads
+        uploaded_files = []
+        if files and len(files) > 0:
+            logger.info(f"Processing {len(files)} uploaded files")
+            
+            for file in files:
+                if file.filename and file.filename.strip():
+                    # Validate file
+                    file_extension = Path(file.filename).suffix.lower()
+                    if file_extension not in ALLOWED_EXTENSIONS:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"File type '{file_extension}' not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+                        )
+                    
+                    # Read file content
+                    file_content = await file.read()
+                    file_size = len(file_content)
+                    
+                    if file_size > MAX_FILE_SIZE:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"File '{file.filename}' is too large. Maximum size: {MAX_FILE_SIZE // (1024*1024)}MB"
+                        )
+                    
+                    if file_size == 0:
+                        continue  # Skip empty files
+                    
+                    # Generate unique filename
+                    unique_id = uuid.uuid4().hex[:8]
+                    safe_filename = f"{unique_id}_{file.filename}"
+                    file_path = UPLOAD_DIR / safe_filename
+                    
+                    # Save file to disk
+                    with open(file_path, "wb") as buffer:
+                        buffer.write(file_content)
+                    
+                    # Store file information
+                    file_info = {
+                        "original_name": file.filename,
+                        "saved_name": safe_filename,
+                        "file_size": file_size,
+                        "content_type": file.content_type or "application/octet-stream"
+                    }
+                    uploaded_files.append(file_info)
+                    
+                    logger.info(f"✅ Saved file: {file.filename} -> {safe_filename} ({format_file_size(file_size)})")
         
-        if missing_fields:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Missing required fields: {', '.join(missing_fields)}"
-            )
-        
-        logger.info(f"Processed form data: {form_data}")
-        logger.info(f"Files info: {files_info}")
-        
-        # Add metadata to the submission
+        # Prepare submission data for database
         submission_data = {
-            **form_data,  # Include all form data as-is
-            "files_info": files_info,  # Store file information
+            **form_data,
+            "uploaded_files": uploaded_files,
             "submitted_at": datetime.utcnow(),
-            "ip_address": request.client.host if request.client else None,
-            "user_agent": request.headers.get("user-agent"),
             "status": "new"
         }
         
@@ -1743,18 +1407,28 @@ async def submit_contact_form(request: Request):
         # Store in MongoDB
         try:
             result = collection.insert_one(submission_data)
-            logger.info(f"Successfully stored submission with ID: {result.inserted_id}")
+            logger.info(f"✅ Successfully stored submission with ID: {result.inserted_id}")
         except PyMongoError as e:
             logger.error(f"MongoDB error: {e}")
+            # Clean up uploaded files if database save failed
+            for file_info in uploaded_files:
+                file_path = UPLOAD_DIR / file_info["saved_name"]
+                if file_path.exists():
+                    file_path.unlink()
             raise HTTPException(
                 status_code=500,
                 detail="Database error occurred while storing submission"
             )
         
-        # Send notification email to company
+        # Send dual notification email (to both admin and company) with attachments
         try:
-            await send_notification_email(form_data)
-            logger.info("Notification email sent successfully")
+            email_result = await send_notification_email(form_data, uploaded_files)
+            if email_result.get("success"):
+                logger.info(f"✅ Dual notification emails sent successfully to: {', '.join(email_result.get('sent_to', []))}")
+                if email_result.get("attachments_included", 0) > 0:
+                    logger.info(f"📎 {email_result['attachments_included']} attachments included in notification")
+            else:
+                logger.warning(f"⚠️ Email notification failed: {email_result.get('error')}")
         except Exception as e:
             logger.error(f"Failed to send notification email: {e}")
             # Don't fail the entire request if email fails
@@ -1763,11 +1437,12 @@ async def submit_contact_form(request: Request):
             "success": True,
             "message": "Contact form submitted successfully",
             "submission_id": str(result.inserted_id),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "files_uploaded": len(uploaded_files),
+            "notifications_sent_to": NOTIFICATION_EMAILS
         }
         
     except HTTPException:
-        # Re-raise HTTP exceptions (they already have proper status codes)
         raise
     except PyMongoError as e:
         logger.error(f"MongoDB error: {e}")
@@ -1777,7 +1452,6 @@ async def submit_contact_form(request: Request):
         )
     except Exception as e:
         logger.error(f"Unexpected error in submit_contact_form: {e}")
-        logger.error(f"Error type: {type(e).__name__}")
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred while processing your submission"
@@ -1789,13 +1463,7 @@ async def get_submissions(
     skip: Optional[int] = 0,
     status: Optional[str] = None
 ):
-    """
-    Retrieve contact form submissions (for admin use)
-    Optional query parameters:
-    - limit: Number of submissions to return (default: 50)
-    - skip: Number of submissions to skip (default: 0)
-    - status: Filter by status (e.g., 'new', 'processed')
-    """
+    """Retrieve contact form submissions (for admin use)"""
     try:
         if not is_db_connected or collection is None:
             raise HTTPException(
@@ -1849,9 +1517,7 @@ async def get_submissions(
 
 @app.put("/api/submissions/{submission_id}/status")
 async def update_submission_status(submission_id: str, request: Request):
-    """
-    Update the status of a specific submission
-    """
+    """Update the status of a specific submission"""
     try:
         if not is_db_connected or collection is None:
             raise HTTPException(
@@ -1902,11 +1568,784 @@ async def update_submission_status(submission_id: str, request: Request):
             detail="An error occurred while updating submission status"
         )
 
+@app.delete("/api/submissions/{submission_id}")
+async def delete_submission(submission_id: str):
+    """Delete a specific submission and its associated files"""
+    try:
+        if not is_db_connected or collection is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection not available"
+            )
+        
+        # Get submission first to check for files
+        submission = collection.find_one({"_id": ObjectId(submission_id)})
+        if not submission:
+            raise HTTPException(
+                status_code=404,
+                detail="Submission not found"
+            )
+        
+        # Delete associated files
+        uploaded_files = submission.get("uploaded_files", [])
+        for file_info in uploaded_files:
+            file_path = UPLOAD_DIR / file_info["saved_name"]
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Deleted file: {file_info['saved_name']}")
+        
+        # Delete submission from database
+        result = collection.delete_one({"_id": ObjectId(submission_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete submission"
+            )
+        
+        logger.info(f"Deleted submission {submission_id} and {len(uploaded_files)} associated files")
+        
+        return {
+            "success": True,
+            "message": "Submission deleted successfully",
+            "submission_id": submission_id,
+            "files_deleted": len(uploaded_files)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting submission: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while deleting submission"
+        )
+
+# ============================================================================
+# GALLERY MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/api/website-images")
+async def get_website_images():
+    """Get all website images in format expected by admin panels"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            logger.warning("Database not connected, returning empty gallery")
+            return {
+                "success": True,
+                "images": {},
+                "total_count": 0
+            }
+        
+        logger.info("Fetching images from gallery collection...")
+        
+        # Fetch all images from database
+        cursor = gallery_collection.find({})
+        images = {}
+        doc_count = 0
+        processed_count = 0
+        
+        for doc in cursor:
+            doc_count += 1
+            logger.info(f"Processing document {doc_count}: {doc.get('id', 'NO_ID')}")
+            
+            # Check if the document has 'id' field
+            image_id = doc.get("id")
+            if not image_id:
+                logger.warning(f"Document missing 'id' field, skipping: {list(doc.keys())}")
+                continue
+            
+            try:
+                # Convert MongoDB document to the expected format
+                images[image_id] = {
+                    "id": image_id,
+                    "name": doc.get("name", "Unknown"),
+                    "description": doc.get("description", "No description"),
+                    "current_url": doc.get("current_url", ""),
+                    "default_url": doc.get("default_url", ""),
+                    "locations": doc.get("locations", []),
+                    "recommended_size": doc.get("recommended_size", ""),
+                    "category": doc.get("category", "other"),
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+                processed_count += 1
+                logger.info(f"Successfully processed image: {image_id}")
+                
+            except Exception as doc_error:
+                logger.error(f"Error processing document {image_id}: {doc_error}")
+                continue
+        
+        logger.info(f"Processed {processed_count} out of {doc_count} documents")
+        logger.info(f"Final images dict has {len(images)} items")
+        
+        return {
+            "success": True,
+            "images": images,
+            "total_count": len(images)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching website images: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return {
+            "success": False,
+            "images": {},
+            "total_count": 0,
+            "error": str(e)
+        }
+
+@app.get("/api/website-images/categories")
+async def get_image_categories():
+    """Get all unique image categories"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            return {
+                "success": True,
+                "categories": ["hero", "about", "services", "portfolio", "contact", "team", "branding", "testimonials", "trading"]
+            }
+        
+        # Get unique categories from database
+        categories = gallery_collection.distinct("category")
+        categories.sort()
+        
+        logger.info(f"Retrieved {len(categories)} image categories")
+        
+        return {
+            "success": True,
+            "categories": categories
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching image categories: {e}")
+        return {
+            "success": True,
+            "categories": ["hero", "about", "services", "portfolio", "contact", "team", "branding", "testimonials", "trading"]
+        }
+
+@app.post("/api/website-images/{image_id}/upload")
+async def upload_image(image_id: str, file: UploadFile = File(...)):
+    """Upload a new image for a specific image slot"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection not available"
+            )
+        
+        # Check if image exists
+        existing_image = gallery_collection.find_one({"id": image_id})
+        if not existing_image:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Image with ID '{image_id}' not found"
+            )
+        
+        # Validate file
+        if not file.filename:
+            raise HTTPException(
+                status_code=400,
+                detail="No file provided"
+            )
+        
+        # Check file extension
+        file_extension = Path(file.filename).suffix.lower()
+        if file_extension not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type not allowed. Allowed types: .jpg, .jpeg, .png, .gif, .webp"
+            )
+        
+        # Read file content to check size
+        file_content = await file.read()
+        if len(file_content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024*1024)}MB"
+            )
+        
+        # Generate unique filename
+        unique_filename = f"{image_id}_{uuid.uuid4().hex[:8]}{file_extension}"
+        file_path = IMAGES_DIR / unique_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+        
+        # Update database with new URL
+        new_url = f"/images/{unique_filename}"
+        update_result = gallery_collection.update_one(
+            {"id": image_id},
+            {
+                "$set": {
+                    "current_url": new_url,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if update_result.modified_count == 0:
+            # Clean up uploaded file if database update failed
+            if file_path.exists():
+                file_path.unlink()
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update image in database"
+            )
+        
+        logger.info(f"Successfully uploaded image for {image_id}: {unique_filename}")
+        
+        return {
+            "success": True,
+            "message": "Image uploaded successfully",
+            "image_id": image_id,
+            "new_url": new_url,
+            "filename": unique_filename
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading image: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload image"
+        )
+
+@app.put("/api/website-images/{image_id}")
+async def update_image_metadata(image_id: str, request: Request):
+    """Update image metadata (name and description)"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection not available"
+            )
+        
+        # Get request data
+        data = await request.json()
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+        
+        if not name:
+            raise HTTPException(
+                status_code=400,
+                detail="Name is required"
+            )
+        
+        # Update image metadata
+        update_result = gallery_collection.update_one(
+            {"id": image_id},
+            {
+                "$set": {
+                    "name": name,
+                    "description": description,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if update_result.matched_count == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Image with ID '{image_id}' not found"
+            )
+        
+        logger.info(f"Updated metadata for image {image_id}")
+        
+        return {
+            "success": True,
+            "message": "Image metadata updated successfully",
+            "image_id": image_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating image metadata: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update image metadata"
+        )
+
+@app.delete("/api/website-images/{image_id}/reset")
+async def reset_image_to_default(image_id: str):
+    """Reset image to its default URL"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection not available"
+            )
+        
+        # Get current image data
+        image_doc = gallery_collection.find_one({"id": image_id})
+        if not image_doc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Image with ID '{image_id}' not found"
+            )
+        
+        # Delete current uploaded file if it exists
+        current_url = image_doc.get("current_url", "")
+        if current_url.startswith("/images/"):
+            file_path = IMAGES_DIR / current_url.replace("/images/", "")
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Deleted uploaded file: {file_path}")
+        
+        # Reset to default URL
+        default_url = image_doc["default_url"]
+        update_result = gallery_collection.update_one(
+            {"id": image_id},
+            {
+                "$set": {
+                    "current_url": default_url,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if update_result.modified_count == 0:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to reset image"
+            )
+        
+        logger.info(f"Reset image {image_id} to default")
+        
+        return {
+            "success": True,
+            "message": "Image reset to default successfully",
+            "image_id": image_id,
+            "default_url": default_url
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resetting image: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to reset image"
+        )
+
+@app.delete("/api/website-images/{image_id}")
+async def delete_image(image_id: str, delete_type: str = "image_only"):
+    """Delete image (either just the uploaded file or the entire configuration)"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection not available"
+            )
+        
+        # Validate delete_type
+        if delete_type not in ["image_only", "complete"]:
+            raise HTTPException(
+                status_code=400,
+                detail="delete_type must be either 'image_only' or 'complete'"
+            )
+        
+        # Get current image data
+        image_doc = gallery_collection.find_one({"id": image_id})
+        if not image_doc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Image with ID '{image_id}' not found"
+            )
+        
+        # Delete uploaded file if it exists
+        current_url = image_doc.get("current_url", "")
+        if current_url.startswith("/images/"):
+            file_path = IMAGES_DIR / current_url.replace("/images/", "")
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Deleted uploaded file: {file_path}")
+        
+        if delete_type == "image_only":
+            # Reset to default URL
+            default_url = image_doc["default_url"]
+            update_result = gallery_collection.update_one(
+                {"id": image_id},
+                {
+                    "$set": {
+                        "current_url": default_url,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            
+            if update_result.modified_count == 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to reset image"
+                )
+            
+            logger.info(f"Deleted custom image for {image_id}, reset to default")
+            
+            return {
+                "success": True,
+                "message": "Custom image deleted, reset to default",
+                "image_id": image_id,
+                "default_url": default_url
+            }
+        
+        else:  # complete deletion
+            # Remove entire image configuration
+            delete_result = gallery_collection.delete_one({"id": image_id})
+            
+            if delete_result.deleted_count == 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to delete image configuration"
+                )
+            
+            logger.info(f"Completely deleted image configuration for {image_id}")
+            
+            return {
+                "success": True,
+                "message": "Image configuration deleted completely",
+                "image_id": image_id
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting image: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete image"
+        )
+
+# ============================================================================
+# ENHANCED DEBUG ENDPOINTS
+# ============================================================================
+
+@app.get("/api/debug/status")
+async def debug_status():
+    """Comprehensive debug status endpoint"""
+    try:
+        status_info = {
+            "api_status": "running",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database_connected": is_db_connected,
+            "mongodb_client_status": mongodb_client is not None,
+            "collections_status": {
+                "gallery_collection": gallery_collection is not None,
+                "admin_collection": admin_collection is not None,
+                "submissions_collection": collection is not None
+            }
+        }
+        
+        # Test MongoDB connection
+        if mongodb_client and is_db_connected:
+            try:
+                mongodb_client.admin.command('ping')
+                status_info["mongodb_ping"] = "success"
+                
+                # Count documents in each collection
+                if gallery_collection:
+                    status_info["gallery_count"] = gallery_collection.count_documents({})
+                if admin_collection:
+                    status_info["admin_count"] = admin_collection.count_documents({})
+                if collection:
+                    status_info["submissions_count"] = collection.count_documents({})
+                    
+            except Exception as e:
+                status_info["mongodb_ping"] = f"failed: {str(e)}"
+        else:
+            status_info["mongodb_ping"] = "not connected"
+            
+        return status_info
+        
+    except Exception as e:
+        return {
+            "api_status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@app.get("/api/debug/gallery-simple")
+async def debug_gallery_simple():
+    """Simple gallery debug without complex processing"""
+    try:
+        if not is_db_connected:
+            return {
+                "error": "Database not connected",
+                "mongodb_connection_string_exists": MONGODB_CONNECTION_STRING is not None,
+                "is_db_connected": is_db_connected
+            }
+            
+        if gallery_collection is None:
+            return {
+                "error": "Gallery collection is None",
+                "database_connected": is_db_connected
+            }
+            
+        # Simple count
+        count = gallery_collection.count_documents({})
+        
+        # Get first document as sample
+        sample_doc = gallery_collection.find_one({})
+        if sample_doc:
+            sample_doc.pop("_id", None)
+            
+        return {
+            "gallery_collection_exists": True,
+            "document_count": count,
+            "sample_document": sample_doc,
+            "collection_name": GALLERY_COLLECTION_NAME
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+
+# ============================================================================
+# DEBUG ENDPOINTS
+# ============================================================================
+
+@app.get("/api/debug/admin")
+async def debug_admin():
+    """Debug admin data and password hashing"""
+    try:
+        if not is_db_connected or admin_collection is None:
+            return {"error": "Database not connected"}
+        
+        # Get admin data
+        admin = admin_collection.find_one({})
+        if not admin:
+            return {"error": "No admin found"}
+        
+        # Remove _id for cleaner output
+        admin_data = dict(admin)
+        admin_data.pop("_id", None)
+        
+        # Test password hashing
+        test_passwords = ["admin123", "mechgenz4"]
+        password_tests = {}
+        
+        stored_password = admin.get("password", "")
+        
+        for test_pwd in test_passwords:
+            hashed = hash_password(test_pwd)
+            matches = verify_password(test_pwd, stored_password)
+            password_tests[test_pwd] = {
+                "hashed": hashed,
+                "matches_stored": matches
+            }
+        
+        return {
+            "admin_data": admin_data,
+            "stored_password": stored_password,
+            "password_tests": password_tests,
+            "admin_collection_count": admin_collection.count_documents({}),
+            "email_config": {
+                "admin_email": ADMIN_EMAIL,
+                "company_email": COMPANY_EMAIL,
+                "notification_emails": NOTIFICATION_EMAILS
+            }
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/debug/reset-admin-password")
+async def reset_admin_password():
+    """Reset admin password to 'mechgenz4'"""
+    try:
+        if not is_db_connected or admin_collection is None:
+            return {"error": "Database not connected"}
+        
+        # Get admin
+        admin = admin_collection.find_one({})
+        if not admin:
+            return {"error": "No admin found"}
+        
+        # Reset password to mechgenz4
+        new_password = "mechgenz4"
+        hashed_password = hash_password(new_password)
+        
+        # Update password
+        result = admin_collection.update_one(
+            {"_id": admin["_id"]},
+            {
+                "$set": {
+                    "email": "mechgenz4@gmail.com",
+                    "name": "Mechgenz",
+                    "password": hashed_password,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.modified_count > 0:
+            return {
+                "success": True,
+                "message": "Admin credentials set to mechgenz4@gmail.com / mechgenz4",
+                "email": "mechgenz4@gmail.com",
+                "new_password": new_password,
+                "hashed_password": hashed_password
+            }
+        else:
+            return {"error": "Failed to update password"}
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/debug/gallery")
+async def debug_gallery():
+    """Debug endpoint to check gallery data"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            return {"error": "Database not connected", "gallery_collection": gallery_collection is None}
+        
+        # Get all images from database
+        cursor = gallery_collection.find({})
+        images = []
+        
+        for doc in cursor:
+            doc.pop("_id", None)  # Remove MongoDB _id
+            if "created_at" in doc and hasattr(doc["created_at"], 'isoformat'):
+                doc["created_at"] = doc["created_at"].isoformat()
+            if "updated_at" in doc and hasattr(doc["updated_at"], 'isoformat'):
+                doc["updated_at"] = doc["updated_at"].isoformat()
+            images.append(doc)
+        
+        return {
+            "images_count": len(images),
+            "images": images,
+            "database_connected": is_db_connected,
+            "collection_name": GALLERY_COLLECTION_NAME
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/debug/fix-missing-images")
+async def fix_missing_images():
+    """Fix missing image files by resetting them to defaults"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            return {"error": "Database not connected"}
+        
+        fixed_count = 0
+        missing_files = []
+        
+        # Get all gallery images
+        cursor = gallery_collection.find({})
+        
+        for doc in cursor:
+            current_url = doc.get("current_url", "")
+            default_url = doc.get("default_url", "")
+            image_id = doc.get("id", "")
+            
+            # Check if current_url points to a local file that doesn't exist
+            if current_url.startswith("/images/"):
+                filename = current_url.replace("/images/", "")
+                file_path = IMAGES_DIR / filename
+                
+                if not file_path.exists():
+                    # Reset to default URL
+                    gallery_collection.update_one(
+                        {"_id": doc["_id"]},
+                        {
+                            "$set": {
+                                "current_url": default_url,
+                                "updated_at": datetime.utcnow()
+                            }
+                        }
+                    )
+                    fixed_count += 1
+                    missing_files.append({
+                        "image_id": image_id,
+                        "missing_file": filename,
+                        "reset_to": default_url
+                    })
+        
+        return {
+            "success": True,
+            "fixed_count": fixed_count,
+            "missing_files": missing_files,
+            "message": f"Reset {fixed_count} images with missing files to their default URLs"
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/debug/reinitialize-gallery")
+async def reinitialize_gallery():
+    """Force reinitialize gallery data"""
+    try:
+        if gallery_collection is None:
+            return {"error": "Gallery collection not available"}
+        
+        # Drop existing data
+        gallery_collection.delete_many({})
+        logger.info("Cleared existing gallery data")
+        
+        # Reinitialize
+        success = initialize_gallery_data()
+        
+        return {
+            "success": success,
+            "message": "Gallery reinitialized" if success else "Failed to reinitialize"
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/debug/check-missing-files")
+async def check_missing_files():
+    """Check which image files are missing"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            return {"error": "Database not connected"}
+        
+        missing_files = []
+        existing_files = []
+        
+        # Get all gallery images
+        cursor = gallery_collection.find({})
+        
+        for doc in cursor:
+            current_url = doc.get("current_url", "")
+            image_id = doc.get("id", "")
+            
+            if current_url.startswith("/images/"):
+                filename = current_url.replace("/images/", "")
+                file_path = IMAGES_DIR / filename
+                
+                if file_path.exists():
+                    existing_files.append({
+                        "image_id": image_id,
+                        "filename": filename,
+                        "size": file_path.stat().st_size
+                    })
+                else:
+                    missing_files.append({
+                        "image_id": image_id,
+                        "filename": filename,
+                        "current_url": current_url,
+                        "default_url": doc.get("default_url", "")
+                    })
+        
+        return {
+            "missing_files_count": len(missing_files),
+            "existing_files_count": len(existing_files),
+            "missing_files": missing_files,
+            "existing_files": existing_files
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/stats")
 async def get_submission_stats():
-    """
-    Get statistics about form submissions
-    """
+    """Get statistics about form submissions"""
     try:
         if not is_db_connected or collection is None:
             raise HTTPException(
@@ -1948,6 +2387,64 @@ async def get_submission_stats():
             status_code=500,
             detail="An error occurred while retrieving statistics"
         )
+
+@app.get("/api/email-config")
+async def get_email_configuration():
+    """Get current email configuration"""
+    return {
+        "success": True,
+        "configuration": {
+            "admin_email": ADMIN_EMAIL,
+            "company_email": COMPANY_EMAIL,
+            "notification_recipients": NOTIFICATION_EMAILS,
+            "dual_delivery_enabled": True,
+            "verified_domain": VERIFIED_DOMAIN,
+            "resend_configured": RESEND_API_KEY is not None
+        }
+    }
+
+@app.get("/api/fix-images-now")
+async def fix_images_now():
+    """Quick fix for missing images"""
+    try:
+        if not is_db_connected or gallery_collection is None:
+            return {"error": "Database not connected"}
+        
+        fixed_count = 0
+        
+        # Get all gallery images and fix missing ones
+        cursor = gallery_collection.find({})
+        
+        for doc in cursor:
+            current_url = doc.get("current_url", "")
+            default_url = doc.get("default_url", "")
+            
+            # Check if current_url points to a local file that doesn't exist
+            if current_url.startswith("/images/"):
+                filename = current_url.replace("/images/", "")
+                file_path = IMAGES_DIR / filename
+                
+                if not file_path.exists():
+                    # Reset to default URL
+                    gallery_collection.update_one(
+                        {"_id": doc["_id"]},
+                        {
+                            "$set": {
+                                "current_url": default_url,
+                                "updated_at": datetime.utcnow()
+                            }
+                        }
+                    )
+                    fixed_count += 1
+        
+        return {
+            "success": True,
+            "fixed_count": fixed_count,
+            "message": f"Fixed {fixed_count} missing images"
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 # Error handlers
 @app.exception_handler(404)
