@@ -1,10 +1,10 @@
-// API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://mechgenz-backend.onrender.com';
+// API Configuration - HARDCODED FOR PRODUCTION
+const API_BASE_URL = 'https://mechgenz-backend.onrender.com';
 
 export const API_ENDPOINTS = {
-  CONTACT_SUBMIT: `${API_BASE_URL}/api/contact`,  // Fixed: removed /submit
-  CONTACT_SUBMISSIONS: `${API_BASE_URL}/api/submissions`,  // Fixed: correct endpoint
-  CONTACT_STATS: `${API_BASE_URL}/api/stats`,  // Fixed: correct endpoint
+  CONTACT_SUBMIT: `${API_BASE_URL}/api/contact`,
+  CONTACT_SUBMISSIONS: `${API_BASE_URL}/api/submissions`,
+  CONTACT_STATS: `${API_BASE_URL}/api/stats`,
   HEALTH_CHECK: `${API_BASE_URL}/health`,
   // Add admin endpoints
   ADMIN_LOGIN: `${API_BASE_URL}/api/admin/login`,
@@ -33,9 +33,11 @@ export interface ApiError {
 
 // API utility functions
 export const submitContactForm = async (formData: FormData): Promise<ContactResponse> => {
+  console.log('Submitting to:', API_ENDPOINTS.CONTACT_SUBMIT); // Debug log
+  
   const response = await fetch(API_ENDPOINTS.CONTACT_SUBMIT, {
     method: 'POST',
-    body: formData,  // Changed: send FormData for file uploads
+    body: formData,
   });
 
   const result = await response.json();
@@ -49,6 +51,7 @@ export const submitContactForm = async (formData: FormData): Promise<ContactResp
 
 export const checkApiHealth = async (): Promise<boolean> => {
   try {
+    console.log('Health check URL:', API_ENDPOINTS.HEALTH_CHECK); // Debug log
     const response = await fetch(API_ENDPOINTS.HEALTH_CHECK);
     const result = await response.json();
     return response.ok && result.status === 'healthy';
