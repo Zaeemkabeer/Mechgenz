@@ -17,8 +17,8 @@ const AdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      // FIXED: Use production backend URL consistently
-      const statsResponse = await fetch('https://mechgenz-backend.onrender.com/admin/dashboard');
+      // FIXED: Use correct backend endpoint /api/stats (not /admin/dashboard)
+      const statsResponse = await fetch('https://mechgenz-backend.onrender.com/api/stats');
       if (statsResponse.ok) {
         const statsData = await statsResponse.json();
         setStats({
@@ -29,7 +29,7 @@ const AdminDashboard = () => {
         });
       }
 
-      // FIXED: Use production backend URL
+      // This endpoint is correct
       const inquiriesResponse = await fetch('https://mechgenz-backend.onrender.com/api/submissions?limit=5');
       if (inquiriesResponse.ok) {
         const inquiriesData = await inquiriesResponse.json();

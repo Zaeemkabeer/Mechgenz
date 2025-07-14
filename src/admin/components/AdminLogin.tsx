@@ -18,7 +18,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
     setError('');
 
     try {
-      // FIXED: Use production backend URL instead of localhost
+      // Use production backend URL
       const response = await fetch('https://mechgenz-backend.onrender.com/api/admin/login', {
         method: 'POST',
         headers: {
@@ -60,21 +60,17 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
               <Building className="h-8 w-8 text-white" />
             </div>
             <div className="flex flex-col">
-              <span className="text-3xl font-bold text-white tracking-wider">
               <span 
                 className="text-3xl font-bold text-white tracking-wider"
                 style={{ fontFamily: 'Unione Force, Arial Black, sans-serif' }}
               >
                 MECHGENZ
               </span>
-              </span>
-              <span className="text-xs font-medium tracking-widest text-gray-300">
               <span 
                 className="text-xs font-medium tracking-widest text-gray-300"
                 style={{ fontFamily: 'Unione Force, Arial Black, sans-serif' }}
               >
                 ADMIN PANEL
-              </span>
               </span>
             </div>
           </div>
@@ -152,7 +148,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
 
           <div className="mt-6 text-center">
             <p className="text-gray-400 text-sm">
-              
+              Use: mechgenz4@gmail.com / mechgenz4
             </p>
           </div>
         </div>
