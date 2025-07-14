@@ -73,6 +73,22 @@ const OurClientsPage = () => {
       services: ['Construction', 'Engineering', 'Infrastructure']
     },
     {
+      name: 'MANNAI ENERGY',
+      subtitle: 'QATAR',
+      logo: '/client-logos/mannai.jpg',
+      description: 'Diversified industrial conglomerate providing comprehensive engineering services, equipment supply, and technical solutions to Qatar\'s oil & gas, infrastructure, and energy sectors with over 70 years of market leadership.',
+      sector: 'Energy & Industrial',
+      services: ['Oil & Gas Equipment', 'Infrastructure Solutions', 'Engineering Services']
+    },
+    {
+      name: 'ATKINSRÉALIS',
+      subtitle: 'GLOBAL ENGINEERING',
+      logo: '/client-logos/atkinsrealis.jpg',
+      description: 'World-leading engineering services and project management company connecting people, data and technology to transform global infrastructure and energy systems across 160+ countries.',
+      sector: 'Engineering & Construction',
+      services: ['Design & Engineering', 'Project Management', 'Infrastructure Solutions']
+    },
+    {
       name: 'Bin Salama',
       subtitle: 'PLASTIC RECYCLING',
       logo: '/client-logos/bin-salama-logo.png',

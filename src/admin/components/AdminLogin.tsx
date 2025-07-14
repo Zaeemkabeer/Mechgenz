@@ -146,11 +146,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className="text-gray-400 text-sm">
-              Use: mechgenz4@gmail.com / mechgenz4
-            </p>
-          </div>
+          
         </div>
       </div>
     </div>

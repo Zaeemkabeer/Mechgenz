@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useWebsiteImages } from '../hooks/useWebsiteImages';
 
 const Hero = () => {
@@ -7,6 +8,7 @@ const Hero = () => {
   const [loadedImages, setLoadedImages] = useState<string[]>([]);
   const [imagesReady, setImagesReady] = useState(false);
   const { getImageUrl, isLoading } = useWebsiteImages();
+  const navigate = useNavigate();
   
   const slideConfigs = [
     {
@@ -86,6 +88,10 @@ const Hero = () => {
     setCurrentSlide(index);
   };
 
+  const handleExploreWork = () => {
+    navigate('/our-projects');
+  };
+
   // Show loading state until images are ready
   if (!imagesReady) {
     return (
@@ -136,7 +142,10 @@ const Hero = () => {
         <p className="text-xl md:text-2xl font-light mb-8 animate-fade-in-up animation-delay-300">
           {slideConfigs[currentSlide].subtitle}
         </p>
-        <button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 animate-fade-in-up animation-delay-600">
+        <button 
+          onClick={handleExploreWork}
+          className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 animate-fade-in-up animation-delay-600"
+        >
           Explore Our Work
         </button>
       </div>

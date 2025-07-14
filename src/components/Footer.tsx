@@ -507,7 +507,7 @@ const Footer = () => {
         <div className="border-t border-gray-800 mt-12 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <p className="text-gray-400 text-sm">
-              Copyright © 2024 MECHGENZ W.L.L. All Rights Reserved.
+              Copyright © 2024 MECHGENZ TRADING CONTRACTING AND SERVICES L.L.C All Rights Reserved.
             </p>
             <div className="flex space-x-6 mt-4 md:mt-0">
               <a href="#" className="text-gray-400 hover:text-orange-500 text-sm transition-colors duration-300">
