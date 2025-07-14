@@ -17,8 +17,8 @@ const AdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      // Fetch stats
-      const statsResponse = await fetch('http://localhost:8000/api/stats');
+      // FIXED: Use production backend URL consistently
+      const statsResponse = await fetch('https://mechgenz-backend.onrender.com/admin/dashboard');
       if (statsResponse.ok) {
         const statsData = await statsResponse.json();
         setStats({
@@ -29,8 +29,8 @@ const AdminDashboard = () => {
         });
       }
 
-      // Fetch recent inquiries
-      const inquiriesResponse = await fetch('http://localhost:8000/api/submissions?limit=5');
+      // FIXED: Use production backend URL
+      const inquiriesResponse = await fetch('https://mechgenz-backend.onrender.com/api/submissions?limit=5');
       if (inquiriesResponse.ok) {
         const inquiriesData = await inquiriesResponse.json();
         setRecentInquiries(inquiriesData.submissions || []);

@@ -29,7 +29,8 @@ const Settings = () => {
 
   const fetchAdminProfile = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/admin/profile');
+      // FIXED: Use production backend URL
+      const response = await fetch('https://mechgenz-backend.onrender.com/api/admin/profile');
       if (response.ok) {
         const data = await response.json();
         setProfile(data.admin);
@@ -119,7 +120,8 @@ const Settings = () => {
         updateData.password = formData.newPassword;
       }
       
-      const response = await fetch('http://localhost:8000/api/admin/profile', {
+      // FIXED: Use production backend URL
+      const response = await fetch('https://mechgenz-backend.onrender.com/api/admin/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

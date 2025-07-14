@@ -39,7 +39,8 @@ const UserInquiries = () => {
 
   const fetchInquiries = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/submissions?limit=100');
+      // FIXED: Use production API URL
+      const response = await fetch('https://mechgenz-backend.onrender.com/api/submissions?limit=100');
       if (response.ok) {
         const data = await response.json();
         setInquiries(data.submissions || []);
@@ -56,8 +57,8 @@ const UserInquiries = () => {
 
     setIsReplying(true);
     try {
-      // Send email reply
-      const emailResponse = await fetch('http://localhost:8000/api/send-reply', {
+      // FIXED: Use production API URL for send reply
+      const emailResponse = await fetch('https://mechgenz-backend.onrender.com/api/send-reply', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -71,8 +72,8 @@ const UserInquiries = () => {
       });
 
       if (emailResponse.ok) {
-        // Update inquiry status
-        await fetch(`http://localhost:8000/api/submissions/${selectedInquiry._id}/status`, {
+        // FIXED: Use production API URL for status update
+        await fetch(`https://mechgenz-backend.onrender.com/api/submissions/${selectedInquiry._id}/status`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -136,7 +137,8 @@ const UserInquiries = () => {
     setIsDeleting(true);
     try {
       const deletePromises = Array.from(selectedInquiries).map(async (inquiryId) => {
-        const response = await fetch(`http://localhost:8000/api/submissions/${inquiryId}`, {
+        // FIXED: Use production API URL for delete
+        const response = await fetch(`https://mechgenz-backend.onrender.com/api/submissions/${inquiryId}`, {
           method: 'DELETE'
         });
         return response.ok;
@@ -174,7 +176,8 @@ const UserInquiries = () => {
     if (!selectedInquiry) return;
     
     try {
-      const response = await fetch(`http://localhost:8000/api/submissions/${selectedInquiry._id}/file/${fileName}`);
+      // FIXED: Use production API URL for file download
+      const response = await fetch(`https://mechgenz-backend.onrender.com/api/submissions/${selectedInquiry._id}/file/${fileName}`);
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);

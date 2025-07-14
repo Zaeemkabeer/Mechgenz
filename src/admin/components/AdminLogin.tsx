@@ -18,7 +18,8 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8000/api/admin/login', {
+      // FIXED: Use production backend URL instead of localhost
+      const response = await fetch('https://mechgenz-backend.onrender.com/api/admin/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -55,7 +55,8 @@ const GalleryManagement = () => {
 
   const checkServerConnection = async (): Promise<boolean> => {
     try {
-      const response = await fetch('http://localhost:8000/health');
+      // FIXED: Use production backend URL
+      const response = await fetch('https://mechgenz-backend.onrender.com/health');
       return response.ok;
     } catch (error) {
       return false;
@@ -76,7 +77,8 @@ const GalleryManagement = () => {
         return;
       }
       
-      const response = await fetch('http://localhost:8000/api/website-images');
+      // FIXED: Use production backend URL
+      const response = await fetch('https://mechgenz-backend.onrender.com/api/website-images');
       
       if (response.ok) {
         const data = await response.json();
@@ -98,7 +100,8 @@ const GalleryManagement = () => {
       const isConnected = await checkServerConnection();
       if (!isConnected) return;
       
-      const response = await fetch('http://localhost:8000/api/website-images/categories');
+      // FIXED: Use production backend URL
+      const response = await fetch('https://mechgenz-backend.onrender.com/api/website-images/categories');
       if (response.ok) {
         const data = await response.json();
         setCategories(data.categories || []);
@@ -133,18 +136,17 @@ const GalleryManagement = () => {
       return imageUrl;
     }
     
-    // If it's a relative URL starting with /images/, make it absolute
+    // FIXED: Use production backend URL instead of localhost
     if (imageUrl.startsWith('/images/')) {
-      return `http://localhost:8000${imageUrl}`;
+      return `https://mechgenz-backend.onrender.com${imageUrl}`;
     }
     
-    // If it's just a filename or relative path, construct the full URL
     if (imageUrl.startsWith('/')) {
-      return `http://localhost:8000${imageUrl}`;
+      return `https://mechgenz-backend.onrender.com${imageUrl}`;
     }
     
     // Default case - assume it's a filename in the images directory
-    return `http://localhost:8000/images/${imageUrl}`;
+    return `https://mechgenz-backend.onrender.com/images/${imageUrl}`;
   };
 
   const handleImageError = (imageId: string) => {
@@ -172,7 +174,8 @@ const GalleryManagement = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`http://localhost:8000/api/website-images/${imageId}/upload`, {
+      // FIXED: Use production backend URL
+      const response = await fetch(`https://mechgenz-backend.onrender.com/api/website-images/${imageId}/upload`, {
         method: 'POST',
         body: formData
       });
@@ -230,7 +233,8 @@ const GalleryManagement = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/website-images/${imageId}`, {
+      // FIXED: Use production backend URL
+      const response = await fetch(`https://mechgenz-backend.onrender.com/api/website-images/${imageId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -276,7 +280,8 @@ const GalleryManagement = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/website-images/${imageId}/reset`, {
+      // FIXED: Use production backend URL
+      const response = await fetch(`https://mechgenz-backend.onrender.com/api/website-images/${imageId}/reset`, {
         method: 'DELETE'
       });
 
@@ -338,7 +343,8 @@ const GalleryManagement = () => {
     setDeleteModal(prev => ({ ...prev, isDeleting: true }));
 
     try {
-      const response = await fetch(`http://localhost:8000/api/website-images/${deleteModal.imageId}?delete_type=${deleteType}`, {
+      // FIXED: Use production backend URL
+      const response = await fetch(`https://mechgenz-backend.onrender.com/api/website-images/${deleteModal.imageId}?delete_type=${deleteType}`, {
         method: 'DELETE'
       });
 
@@ -521,7 +527,7 @@ const GalleryManagement = () => {
         </div>
         {!serverConnected && (
           <p className="mt-2 text-sm">
-            Please ensure the backend server is running on http://localhost:8000 to manage images.
+            Please ensure the backend server is running on https://mechgenz-backend.onrender.com to manage images.
           </p>
         )}
       </div>
