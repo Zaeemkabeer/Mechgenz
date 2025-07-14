@@ -106,7 +106,8 @@ const Footer = () => {
         formDataToSend.append('files', file);
       });
 
-      const response = await fetch('http://localhost:8000/api/contact', {
+      // FIXED: Use production backend URL instead of localhost
+      const response = await fetch('https://mechgenz-backend.onrender.com/api/contact', {
         method: 'POST',
         body: formDataToSend
       });
