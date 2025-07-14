@@ -15,6 +15,9 @@ interface WebsiteImages {
   [key: string]: WebsiteImage;
 }
 
+// PRODUCTION BACKEND URL - HARDCODED
+const BACKEND_URL = 'https://mechgenz-backend.onrender.com';
+
 // Local storage key for caching images
 const IMAGES_CACHE_KEY = 'mechgenz_website_images';
 const CACHE_EXPIRY_KEY = 'mechgenz_images_cache_expiry';
@@ -261,7 +264,8 @@ export const useWebsiteImages = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
       
-      const response = await fetch('http://localhost:8000/health', {
+      // FIXED: Use production backend URL
+      const response = await fetch(`${BACKEND_URL}/health`, {
         method: 'GET',
         signal: controller.signal
       });
@@ -320,8 +324,8 @@ export const useWebsiteImages = () => {
 
       console.log('🔄 Fetching fresh images from server...');
       
-      // Server is available, try to fetch fresh data
-      const response = await fetch('http://localhost:8000/api/website-images', {
+      // FIXED: Use production backend URL
+      const response = await fetch(`${BACKEND_URL}/api/website-images`, {
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
@@ -398,9 +402,9 @@ export const useWebsiteImages = () => {
   const getImageUrl = (imageId: string, fallbackUrl?: string): string => {
     const image = images[imageId];
     if (image?.current_url) {
-      // If it's a relative URL, make it absolute
+      // FIXED: If it's a relative URL, make it absolute using production backend
       if (image.current_url.startsWith('/images/')) {
-        return `http://localhost:8000${image.current_url}`;
+        return `${BACKEND_URL}${image.current_url}`;
       }
       return image.current_url;
     }
@@ -409,7 +413,7 @@ export const useWebsiteImages = () => {
     const defaultImage = DEFAULT_IMAGES[imageId];
     if (defaultImage?.current_url) {
       if (defaultImage.current_url.startsWith('/images/')) {
-        return `http://localhost:8000${defaultImage.current_url}`;
+        return `${BACKEND_URL}${defaultImage.current_url}`;
       }
       return defaultImage.current_url;
     }
