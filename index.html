@@ -2,7 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    
+    <!-- Multiple Favicon Sizes -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png">
+    <!-- Fallback for older browsers -->
     <link rel="icon" type="image/jpeg" href="/mechgenz-logo.jpg" />
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
     <!-- Basic SEO Meta Tags -->
@@ -21,7 +29,7 @@
     <meta property="og:url" content="https://mechgenz.com/" />
     <meta property="og:title" content="MECHGENZ - Trading Contracting and Services | Qatar" />
     <meta property="og:description" content="Professional construction company in Qatar specializing in infrastructure, civil works, and general contracting services with 15+ years of experience." />
-    <meta property="og:image" content="https://mechgenz.com/mechgenz-og-image.jpg" />
+    <meta property="og:image" content="https://mechgenz.com/mechgenz-logo.jpg" />
     <meta property="og:site_name" content="MECHGENZ" />
     <meta property="og:locale" content="en_US" />
 
@@ -30,7 +38,7 @@
     <meta property="twitter:url" content="https://mechgenz.com/" />
     <meta property="twitter:title" content="MECHGENZ - Trading Contracting and Services | Qatar" />
     <meta property="twitter:description" content="Professional construction company in Qatar specializing in infrastructure, civil works, and general contracting services." />
-    <meta property="twitter:image" content="https://mechgenz.com/mechgenz-og-image.jpg" />
+    <meta property="twitter:image" content="https://mechgenz.com/mechgenz-logo.jpg" />
 
     <!-- Canonical URL -->
     <link rel="canonical" href="https://mechgenz.com/" />
@@ -40,7 +48,7 @@
     <meta name="msapplication-TileColor" content="#ff5722" />
     <meta name="application-name" content="MECHGENZ" />
 
-    <!-- Schema.org Structured Data -->
+    <!-- Enhanced Schema.org Structured Data -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -48,7 +56,12 @@
       "name": "MECHGENZ Trading Contracting and Services",
       "alternateName": ["MECHGENZ", "Mechgenz"],
       "url": "https://mechgenz.com",
-      "logo": "https://mechgenz.com/mechgenz-logo.jpg",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://mechgenz.com/mechgenz-logo.jpg",
+        "width": 600,
+        "height": 600
+      },
       "description": "Professional construction company in Qatar specializing in infrastructure, civil works, and general contracting services with 15+ years of experience.",
       "foundingDate": "2008",
       "address": {
